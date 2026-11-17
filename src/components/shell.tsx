@@ -331,7 +331,7 @@ function UserMenu({ viewer, variant }: { viewer: ViewerLite; variant: "card" | "
 }
 
 /** Keeps server-rendered data fresh without websockets: refresh while the tab is visible. */
-export function LiveRefresh({ seconds = 20 }: { seconds?: number }) {
+export function LiveRefresh({ seconds = 60 }: { seconds?: number }) {
   const router = useRouter();
   useEffect(() => {
     const id = setInterval(() => {

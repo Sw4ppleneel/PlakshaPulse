@@ -306,7 +306,7 @@ export function ManagePanel({
                     ref={fileRef}
                     type="file"
                     hidden
-                    accept="image/jpeg,image/png,image/webp,image/heic"
+                    accept="image/jpeg,image/png,image/webp"
                     onChange={(e) => e.target.files?.[0] && setPhotos([...photos, e.target.files[0]])}
                   />
                 </div>
@@ -376,38 +376,6 @@ export function ManagePanel({
           </div>
         )}
 
-        {isAdmin && (
-          <div className="space-y-2 border-t border-line pt-4">
-            {!hidden && hiding && (
-              <input
-                autoFocus
-                value={hideReason}
-                onChange={(e) => setHideReason(e.target.value.slice(0, 300))}
-                placeholder="Reason (shown to the reporter)"
-                className="h-9 w-full rounded-full bg-surface-2 px-3 text-sm"
-              />
-            )}
-            <Button
-              size="sm"
-              variant={hidden ? "secondary" : "ghost"}
-              className="w-full !text-danger"
-              disabled={pending || (hiding && hideReason.trim().length < 3)}
-              onClick={() => {
-                if (!hidden && !hiding) return setHiding(true);
-                start(async () => {
-                  const r = await moderate({ targetType: "issue", targetId: issueId, hide: !hidden, reason: hideReason || undefined });
-                  if (!r.ok) return void toast.error(r.error);
-                  toast.success(hidden ? "Restored." : "Hidden from the board.");
-                  setHiding(false);
-                  setHideReason("");
-                  router.refresh();
-                });
-              }}
-            >
-              <EyeOff size={14} /> {hidden ? "Restore to board" : hiding ? "Confirm hide" : "Hide from board"}
-            </Button>
-          </div>
-        )}
       </div>
     </div>
   );
@@ -430,5 +398,55 @@ export function HideCommentButton({ commentId, hidden }: { commentId: string; hi
     >
       {hidden ? "Restore" : "Hide"}
     </button>
+  );
+}
+
+/**
+ * Hide or restore a live issue. For moderators and admins, on any issue (not only flagged ones).
+ * Items waiting for approval are decided with the banner's Approve/Reject instead.
+ */
+export function ModerateIssue({ issueId, hidden }: { issueId: string; hidden: boolean }) {
+  const router = useRouter();
+  const [pending, start] = useTransition();
+  const [hiding, setHiding] = useState(false);
+  const [reason, setReason] = useState("");
+  return (
+    <div className="card space-y-2 p-4">
+      <div className="label">Moderation</div>
+      {!hidden && hiding && (
+        <input
+          autoFocus
+          value={reason}
+          onChange={(e) => setReason(e.target.value.slice(0, 300))}
+          placeholder="Reason (shown to the reporter and in the log)"
+          aria-label="Reason for hiding"
+          className="h-10 w-full rounded-full bg-surface-2 px-4 text-sm outline-none focus:bg-surface focus:ring-2 focus:ring-brand"
+        />
+      )}
+      <Button
+        size="sm"
+        variant={hidden ? "secondary" : "ghost"}
+        className={cn("w-full", !hidden && "!text-danger")}
+        disabled={pending || (hiding && reason.trim().length < 3)}
+        onClick={() => {
+          if (!hidden && !hiding) return setHiding(true);
+          start(async () => {
+            const r = await moderate({ targetType: "issue", targetId: issueId, hide: !hidden, reason: reason || undefined });
+            if (!r.ok) return void toast.error(r.error);
+            toast.success(hidden ? "Restored. It's public again." : "Hidden from the board.");
+            setHiding(false);
+            setReason("");
+            router.refresh();
+          });
+        }}
+      >
+        <EyeOff size={14} aria-hidden /> {hidden ? "Restore to the board" : hiding ? "Confirm hide" : "Hide from the board"}
+      </Button>
+      {hiding && (
+        <Button size="sm" variant="ghost" className="w-full" disabled={pending} onClick={() => setHiding(false)}>
+          Cancel
+        </Button>
+      )}
+    </div>
   );
 }

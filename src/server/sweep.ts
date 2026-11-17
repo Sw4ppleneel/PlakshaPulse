@@ -18,9 +18,16 @@ export async function sweep(force = false) {
   await db.execute(sql`delete from rate_hits where reset_at < now() - interval '1 day'`);
   const r = await db.execute<{ id: string; number: number }>(sql`
     with closed as (
-      update issues set status = 'closed', closed_at = now(), updated_at = now()
-      where status = 'resolved' and resolved_at < now() - make_interval(days => ${VERIFY_WINDOW_DAYS})
-      returning id, number
+      update issues i set status = 'closed', closed_at = now(), updated_at = now()
+      where i.status = 'resolved' and not i.hidden
+        and i.resolved_at < now() - make_interval(days => ${VERIFY_WINDOW_DAYS})
+        -- If anyone affected said it's still broken this round, it isn't closed as fixed on silence;
+        -- it waits for the office instead.
+        and not exists (
+          select 1 from verifications v
+          where v.issue_id = i.id and v.round = i.reopen_count and not v.fixed
+        )
+      returning i.id, i.number
     ), ev as (
       insert into issue_events (issue_id, type, from_status, to_status, note)
       select id, 'verified', 'resolved', 'closed', 'No one reported it still broken within ${sql.raw(String(VERIFY_WINDOW_DAYS))} days.' from closed

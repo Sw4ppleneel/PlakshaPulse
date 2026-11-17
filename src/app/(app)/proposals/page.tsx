@@ -40,7 +40,7 @@ export default async function ProposalsPage({ searchParams }: { searchParams: Pr
 
   return (
     <div className="space-y-6">
-      <LiveRefresh seconds={30} />
+      <LiveRefresh seconds={60} />
       <PageHeader
         title="Proposals"
         sub={

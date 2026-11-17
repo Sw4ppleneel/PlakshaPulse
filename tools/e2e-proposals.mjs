@@ -143,8 +143,14 @@ await s.reload();
 await s.getByRole("button", { name: "Take it to the office" }).click();
 await s.getByPlaceholder(/Who did you take it to/).fill("Met the Student Life Office on Tuesday with the evidence pack.");
 await s.getByRole("button", { name: "Confirm" }).click();
+await s.getByText("Pick the office this is with").waitFor();
+ok("an office has to be chosen before it counts as with the office");
+await s.getByLabel("Owning office").selectOption("student-life");
+await s.getByRole("button", { name: "Confirm" }).click();
 await s.getByText("Supporters have been notified").waitFor();
 assert.equal(await stage(), "in_review");
+assert.deepEqual(await q("select approval, hidden from proposal_posts where proposal_id = $1 and body like 'Met the Student Life Office%'", [prop.id]), [{ approval: "pending", hidden: true }]);
+ok("the proposer's note waits for a moderator; the move itself is public");
 assert.equal((await q("select count(*)::int n from notifications where proposal_id = $1 and user_id = 'demo-prof' and kind = 'stage'", [prop.id]))[0].n, 1);
 ok("proposer moved it to the office; supporter notified");
 

@@ -295,7 +295,7 @@ export function ReportForm({ categories, locations, departments }: { categories:
                     <Camera size={18} /> Add
                   </button>
                 )}
-                <input ref={fileRef} type="file" accept="image/jpeg,image/png,image/webp,image/heic" multiple hidden onChange={(e) => addPhotos(e.target.files)} />
+                <input ref={fileRef} type="file" accept="image/jpeg,image/png,image/webp" multiple hidden onChange={(e) => addPhotos(e.target.files)} />
               </div>
               <p className="mt-1.5 text-[11px] text-ink-muted">Location data is stripped from photos automatically.</p>
             </div>

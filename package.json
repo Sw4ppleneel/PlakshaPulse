@@ -17,12 +17,12 @@
     "db:seed": "tsx scripts/seed.ts",
     "db:reset": "tsx scripts/reset.ts",
     "make-admin": "tsx scripts/make-admin.ts",
-    "sweep": "tsx scripts/sweep.ts",
+    "sweep": "tsx --conditions=react-server scripts/sweep.ts",
     "e2e": "node tools/e2e.mjs",
     "security:check": "node tools/attack.mjs && node tools/attack-replay.mjs",
     "demo:video": "node tools/demo-video.mjs",
     "shots": "node tools/shots.mjs",
-    "vercel-build": "tsx scripts/migrate.ts && tsx scripts/seed.ts && next build"
+    "vercel-build": "node scripts/vercel-build.mjs"
   },
   "dependencies": {
     "better-auth": "1.7.18",

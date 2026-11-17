@@ -8,7 +8,11 @@ const pool =
   globalForDb.pool ??
   new Pool({
     connectionString: process.env.DATABASE_URL,
-    max: 10,
+    // Serverless: many small instances, each needing few connections. Neon's pooled endpoint
+    // multiplexes them; idle ones close quickly and a stuck connect fails instead of hanging.
+    max: 4,
+    idleTimeoutMillis: 10_000,
+    connectionTimeoutMillis: 8_000,
   });
 if (process.env.NODE_ENV !== "production") globalForDb.pool = pool;
 

@@ -7,7 +7,8 @@ import { emailOTP } from "better-auth/plugins/email-otp";
 import { eq } from "drizzle-orm";
 import { db } from "@/db";
 import { account, session, user, verification } from "@/db/schema";
-import { hit } from "@/server/rate-limit";
+import { hit, isLive } from "@/server/rate-limit";
+import { DEVICE_COOKIE, readCookie, verifyDeviceToken } from "./device";
 import { env, isAllowedEmail } from "./env";
 import { sendSignInCode } from "./mail";
 
@@ -90,40 +91,91 @@ export const auth = betterAuth({
     useSecureCookies: env.isProd,
     database: { generateId: () => crypto.randomUUID() },
   },
+  // Endpoints Pulse doesn't use. /update-user would let anyone rename themselves (impersonating an
+  // office, or posting unreviewed text as a name); the rest are password/email-change flows that
+  // don't apply to code sign-in.
+  disabledPaths: [
+    "/update-user",
+    "/change-email",
+    "/change-password",
+    "/set-password",
+    "/delete-user",
+    "/email-otp/change-email",
+    "/email-otp/request-email-change",
+    "/email-otp/request-password-reset",
+    "/email-otp/reset-password",
+    "/email-otp/check-verification-otp",
+    "/email-otp/verify-email",
+    "/forget-password/email-otp",
+  ],
   hooks: {
     // Better Auth swallows errors thrown while sending the code, so anything the person needs to
     // hear about (wrong domain, too many codes) has to be decided here, before the endpoint runs.
     before: createAuthMiddleware(async (ctx) => {
-      if (ctx.path !== "/email-otp/send-verification-otp") return;
-      const to = String((ctx.body as { email?: unknown } | undefined)?.email ?? "").trim().toLowerCase();
+      const sending = ctx.path === "/email-otp/send-verification-otp";
+      const verifying = ctx.path === "/sign-in/email-otp";
+      if (!sending && !verifying) return;
+      const body = (ctx.body ?? {}) as { email?: unknown; type?: unknown };
+      const to = String(body.email ?? "").trim().toLowerCase();
       if (!isAllowedEmail(to)) throw new APIError("FORBIDDEN", { message: FORBIDDEN });
-      // Per browser: every code costs one of the day's emails, even for an address that doesn't
-      // exist, so one browser can't spend them typing junk. The id is set by the sign-in page.
-      const device = /(?:^|;\s*)pulse_device=([0-9a-f-]{36})/.exec(ctx.headers?.get("cookie") ?? "")?.[1];
+      const device = await verifyDeviceToken(readCookie(ctx.headers?.get("cookie"), DEVICE_COOKIE));
       if (!device) throw new APIError("BAD_REQUEST", { message: "Reload the page and try again." });
+
+      if (verifying) {
+        // A code only works in the browser that asked for it. Without this, anyone could burn a
+        // person's code with five wrong guesses and keep them locked out.
+        if (!(await isLive(`otp-owner:${to}:${device}`))) {
+          throw new APIError("BAD_REQUEST", { message: "Enter the code in the same browser you asked for it from, or request a new one." });
+        }
+        return;
+      }
+
+      if (body.type !== "sign-in") throw new APIError("BAD_REQUEST", { message: "Unsupported." });
+      // Per browser: 5 codes per 15 minutes.
       if (!(await hit(`otp-device:${device}`, 5, 900))) {
         throw new APIError("TOO_MANY_REQUESTS", { message: "Too many codes from this browser. Wait 15 minutes, and check the address is right — it includes your batch, like .ug25." });
       }
-      // 3 codes per inbox per 10 minutes. With 5 guesses per code that is 15 guesses in a million.
+      // Per inbox: 3 codes per 10 minutes. With 5 guesses per code that is 15 guesses in a million.
       if (!(await hit(`otp:${to}`, 3, 600))) {
         throw new APIError("TOO_MANY_REQUESTS", { message: "Too many codes requested for this address. Use the latest one, or wait 10 minutes." });
       }
-      if (env.smtpUrl && !(await hit("mail:day", env.mailDailyCap, 86_400))) {
-        throw new APIError("TOO_MANY_REQUESTS", { message: "Pulse has sent all the sign-in emails it can today. Please try again tomorrow." });
+      // Addresses that have never signed in: cap per network and per day, so typing junk (or a
+      // script doing it) can't use up the day's emails for people who already have accounts.
+      const [known] = await db.select({ id: user.id }).from(user).where(eq(user.email, to)).limit(1);
+      if (!known) {
+        const ip = (ctx.headers?.get("x-real-ip") ?? ctx.headers?.get("x-forwarded-for")?.split(",")[0] ?? "unknown").trim();
+        if (!(await hit(`otp-new-ip:${ip}`, 60, 3600))) {
+          throw new APIError("TOO_MANY_REQUESTS", { message: "Too many new sign-ups from this network right now. Try again in a little while." });
+        }
+        if (env.smtpUrl && !(await hit("mail:day:new", env.mailDailyCapNew, 86_400))) {
+          throw new APIError("TOO_MANY_REQUESTS", { message: "Pulse has sent all the sign-up emails it can today. Please try again tomorrow." });
+        }
       }
+      await hit(`otp-owner:${to}:${device}`, 1_000_000, 600);
+    }),
+    // The send itself runs inside Better Auth, which reports success even when it fails. It leaves
+    // a note on the request (see sendVerificationOTP); turn that into an honest error here.
+    after: createAuthMiddleware(async (ctx) => {
+      if (ctx.path !== "/email-otp/send-verification-otp") return;
+      const failed = (ctx.context as { pulseMail?: "cap" | "error" }).pulseMail;
+      if (failed === "cap") throw new APIError("TOO_MANY_REQUESTS", { message: "Pulse has sent all the sign-in emails it can today. Please try again tomorrow." });
+      if (failed === "error") throw new APIError("SERVICE_UNAVAILABLE", { message: "We couldn't send the email just now. Try again in a minute." });
     }),
   },
   databaseHooks: {
     user: {
       create: {
-        before: async (u) => {
+        before: async (u, ctx) => {
           if (!isAllowedEmail(u.email)) throw new APIError("FORBIDDEN", { message: FORBIDDEN });
           const email = u.email.toLowerCase();
+          // Only Microsoft's directory name is trusted; a name sent with a code sign-in is ignored.
+          const fromDirectory = ctx?.path?.startsWith("/callback") ? u.name?.trim().slice(0, 60) : "";
           return {
             data: {
               ...u,
               email,
-              name: u.name?.trim() || nameFromEmail(email),
+              name: fromDirectory || nameFromEmail(email),
+              image: null,
               // Roles are only ever assigned server-side.
               role: env.adminEmails.includes(email) ? "admin" : "member",
               banned: false,
@@ -159,11 +211,19 @@ export const auth = betterAuth({
       expiresIn: 600,
       allowedAttempts: 5,
       storeOTP: "hashed",
-      async sendVerificationOTP({ email, otp, type }) {
-        if (type !== "sign-in") throw new APIError("BAD_REQUEST", { message: "Unsupported." });
-        if (!isAllowedEmail(email)) throw new APIError("FORBIDDEN", { message: FORBIDDEN });
-        // Per-inbox and daily limits run in hooks.before, where a refusal reaches the person asking.
-        await sendSignInCode(email.toLowerCase(), otp);
+      async sendVerificationOTP({ email, otp, type }, ctx) {
+        if (type !== "sign-in" || !isAllowedEmail(email)) return;
+        const note = (v: "cap" | "error") => {
+          if (ctx) (ctx.context as { pulseMail?: string }).pulseMail = v;
+        };
+        // Counted only when a mail is really about to go out.
+        if (env.smtpUrl && !(await hit("mail:day", env.mailDailyCap, 86_400))) return note("cap");
+        try {
+          await sendSignInCode(email.toLowerCase(), otp);
+        } catch (e) {
+          console.error("[mail] sign-in code not sent:", (e as Error).message);
+          note("error");
+        }
       },
     }),
     nextCookies(), // must be last

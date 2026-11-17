@@ -71,7 +71,7 @@ export async function listIssues(viewer: Viewer, f: BoardFilter = {}): Promise<B
 
   const where = [
     // Your own list includes what is still waiting for a moderator; nobody else's ever does.
-    f.mine === "reported" ? sql`(i.hidden = false or i.approval <> 'approved')` : sql`i.hidden = false`,
+    f.mine === "reported" ? sql`true` : sql`i.hidden = false`,
     sql`i.status::text in (${sql.join(
       statuses.map((s) => sql`${s}`),
       sql`, `,
@@ -80,8 +80,8 @@ export async function listIssues(viewer: Viewer, f: BoardFilter = {}): Promise<B
   if (f.category) where.push(sql`i.category_id = ${f.category}`);
   if (f.location) where.push(sql`i.location_id = ${f.location}`);
   if (f.q && f.q.trim().length >= 2) {
-    const q = f.q.trim().slice(0, 100);
-    where.push(sql`(i.title ilike ${"%" + q + "%"} or word_similarity(${q}, i.title) > 0.4 or i.number::text = ${q.replace(/^#/, "")})`);
+    const q = f.q.replace(/\u0000/g, "").trim().slice(0, 100);
+    where.push(sql`(i.title ilike ${"%" + q.replace(/[\\%_]/g, (c) => "\\" + c) + "%"} or word_similarity(${q}, i.title) > 0.4 or i.number::text = ${q.replace(/^#/, "")})`);
   }
   if (f.mine === "reported") where.push(sql`i.reporter_id = ${viewer.id}`);
   if (f.mine === "watching") where.push(sql`exists (select 1 from issue_watchers w where w.issue_id = i.id and w.user_id = ${viewer.id})`);
@@ -210,7 +210,7 @@ function tokens(text: string): string[] {
  * trigram fuzziness from Postgres for typos, plus a nudge for matching category/location.
  */
 export async function findSimilar(viewer: Viewer, q: string, categoryId?: string, locationId?: string) {
-  const query = q.trim().slice(0, 140);
+  const query = q.replace(/\u0000/g, "").trim().slice(0, 140);
   const qTokens = [...new Set(tokens(query))];
   if (query.length < 4 || !qTokens.length) return [] as SimilarIssue[];
 
@@ -226,13 +226,13 @@ export async function findSimilar(viewer: Viewer, q: string, categoryId?: string
     viewer_voted: boolean;
     fuzzy: number;
   }>(sql`
-    select i.id, i.number, i.title, i.body, i.status, i.category_id, i.location_id, i.metoo_count,
+    select i.id, i.number, i.title, left(i.body, 400) as body, i.status, i.category_id, i.location_id, i.metoo_count,
       exists (select 1 from issue_votes mv where mv.issue_id = i.id and mv.user_id = ${viewer.id}) as viewer_voted,
       word_similarity(${query.toLowerCase()}, lower(i.title))::float8 as fuzzy
     from issues i
     where i.hidden = false and i.status in ('open','acknowledged','in_progress','resolved')
     order by i.created_at desc
-    limit 600
+    limit 400
   `);
 
   const docs = rows.rows.map((r) => ({ r, title: new Set(tokens(r.title)), body: new Set(tokens(r.body)) }));
@@ -345,7 +345,7 @@ export async function getIssueDetail(viewer: Viewer, number: number) {
       .where(eq(attachments.issueId, i.id))
       .orderBy(asc(attachments.createdAt)),
     db
-      .select({ u: issueVotes.userId })
+      .select({ u: issueVotes.userId, createdAt: issueVotes.createdAt })
       .from(issueVotes)
       .where(and(eq(issueVotes.issueId, i.id), eq(issueVotes.userId, viewer.id))),
     db
@@ -359,9 +359,13 @@ export async function getIssueDetail(viewer: Viewer, number: number) {
     db
       .select({ number: issues.number, title: issues.title })
       .from(issues)
-      .where(eq(issues.duplicateOfId, i.id)),
+      .where(and(eq(issues.duplicateOfId, i.id), mod ? sql`true` : eq(issues.hidden, false))),
     i.duplicateOfId
-      ? db.select({ number: issues.number, title: issues.title }).from(issues).where(eq(issues.id, i.duplicateOfId)).limit(1)
+      ? db
+          .select({ number: issues.number, title: issues.title })
+          .from(issues)
+          .where(and(eq(issues.id, i.duplicateOfId), mod ? sql`true` : eq(issues.hidden, false)))
+          .limit(1)
       : Promise.resolve([]),
   ]);
 
@@ -389,15 +393,15 @@ export async function getIssueDetail(viewer: Viewer, number: number) {
       createdAt: e.createdAt.toISOString(),
     })),
     ...commentRows
-      .filter(({ c }) => !c.hidden || manage || mod || c.authorId === viewer.id)
+      .filter(({ c }) => !c.hidden || mod || c.authorId === viewer.id || (manage && c.approval === "approved"))
       .map(({ c, name, image, deptId }): TimelineItem => ({
         kind: "comment",
         id: c.id,
         body: c.body,
-        author: c.official ? (deptNames.get(deptId ?? "") ?? "Campus admin") : c.anonymous ? "Anonymous Plaksha member" : name,
+        author: c.official ? (deptNames.get(c.departmentId ?? "") ?? "Campus admin") : c.anonymous ? "Anonymous Plaksha member" : name,
         authorImage: c.anonymous || c.official ? null : image,
         official: c.official,
-        departmentName: c.official ? (deptNames.get(deptId ?? "") ?? "Campus admin") : null,
+        departmentName: c.official ? (deptNames.get(c.departmentId ?? "") ?? "Campus admin") : null,
         mine: c.authorId === viewer.id,
         hidden: c.hidden,
         approval: c.approval,
@@ -448,7 +452,8 @@ export async function getIssueDetail(viewer: Viewer, number: number) {
       fixed: fixedVotes,
       broken: brokenVotes,
       viewer: (viewerVerification ? (viewerVerification.fixed ? "fixed" : "broken") : null) as "fixed" | "broken" | null,
-      viewerEligible: i.status === "resolved" && voted.length > 0 && !viewerVerification,
+      // Same rule as verifyFix: affected before it was marked fixed.
+      viewerEligible: i.status === "resolved" && voted.length > 0 && (!i.resolvedAt || voted[0]!.createdAt <= i.resolvedAt) && !viewerVerification,
     },
     photos: photos.filter((p) => p.kind === "report"),
     resolutionPhotos: photos.filter((p) => p.kind === "resolution"),
@@ -473,12 +478,13 @@ export async function getPulseStats() {
     select
       count(*) filter (where status in ('open','acknowledged','in_progress','resolved') and not hidden)::int as active,
       count(*) filter (where created_at > now() - interval '7 days' and not hidden)::int as reported_week,
-      count(*) filter (where resolved_at > now() - interval '7 days' and status in ('resolved','closed'))::int as fixed_week,
+      count(*) filter (where resolved_at > now() - interval '7 days' and status in ('resolved','closed') and not hidden)::int as fixed_week,
       (percentile_cont(0.5) within group (order by extract(epoch from resolved_at - created_at) / 3600)
-        filter (where resolved_at > now() - interval '30 days' and status in ('resolved','closed')))::float8 as median_hours,
+        filter (where resolved_at > now() - interval '30 days' and status in ('resolved','closed') and not hidden))::float8 as median_hours,
       (avg(case when resolved_at <= due_at then 1.0 else 0.0 end)
-        filter (where resolved_at > now() - interval '30 days' and status in ('resolved','closed')))::float8 as on_time,
-      (select count(distinct user_id) from issue_votes where created_at > now() - interval '30 days')::int as people
+        filter (where resolved_at > now() - interval '30 days' and status in ('resolved','closed') and not hidden))::float8 as on_time,
+      (select count(distinct v.user_id) from issue_votes v join issues vi on vi.id = v.issue_id
+        where v.created_at > now() - interval '30 days' and not vi.hidden)::int as people
     from issues
   `);
   const s = r.rows[0]!;
@@ -519,7 +525,7 @@ export async function getDepartmentScoreboard() {
         filter (where i.resolved_at > now() - interval '90 days' and i.status in ('resolved','closed')))::float8 as on_time,
       coalesce(sum(i.reopen_count) filter (where i.created_at > now() - interval '90 days'), 0)::int as reopened
     from departments d
-    left join issues i on i.department_id = d.id
+    left join issues i on i.department_id = d.id and not i.hidden and i.approval = 'approved'
     group by d.id
     order by open desc, d.name
   `);

@@ -38,7 +38,7 @@ export default async function BoardPage({ searchParams }: { searchParams: Promis
 
   return (
     <div className="space-y-6">
-      <LiveRefresh seconds={20} />
+      <LiveRefresh seconds={60} />
       <PageHeader
         title="Issues"
         sub={

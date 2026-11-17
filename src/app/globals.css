@@ -228,6 +228,17 @@
   h3 {
     text-wrap: balance;
   }
+  /* A long URL or a word without spaces must wrap instead of pushing the page sideways. */
+  h1,
+  h2,
+  h3,
+  p,
+  li,
+  a,
+  dd,
+  blockquote {
+    overflow-wrap: anywhere;
+  }
 }
 
 /* Headings: same family as the body, set heavier and tighter. */

@@ -43,7 +43,8 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
     headers: {
       "Content-Type": row.mime,
       "Content-Length": String(row.data.length),
-      "Cache-Control": "private, max-age=86400, immutable",
+      // Short-lived: a photo a moderator hides should stop showing within minutes, even from caches.
+      "Cache-Control": "private, max-age=300",
       "Content-Disposition": "inline",
       "X-Content-Type-Options": "nosniff",
       "Content-Security-Policy": "default-src 'none'; sandbox",

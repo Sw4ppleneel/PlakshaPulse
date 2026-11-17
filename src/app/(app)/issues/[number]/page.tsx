@@ -9,7 +9,7 @@ import { ACTIVE_STATUSES, SEVERITY_META, STATUS_META } from "@/lib/constants";
 import { cn, duration, hoursBetween, timeAgo } from "@/lib/format";
 import { requireViewerPage } from "@/server/dal";
 import { getIssueDetail, getTaxonomy, type IssueDetail, type TimelineItem } from "@/server/queries";
-import { CommentComposer, FlagButton, HideCommentButton, ManagePanel, NewIssueToast, VerifyCard, WatchButton } from "./issue-client";
+import { CommentComposer, FlagButton, HideCommentButton, ManagePanel, ModerateIssue, NewIssueToast, VerifyCard, WatchButton } from "./issue-client";
 
 export async function generateMetadata({ params }: { params: Promise<{ number: string }> }) {
   return { title: `#${(await params).number}` };
@@ -18,7 +18,7 @@ export async function generateMetadata({ params }: { params: Promise<{ number: s
 export default async function IssuePage({ params }: { params: Promise<{ number: string }> }) {
   const viewer = await requireViewerPage();
   const n = Number((await params).number);
-  if (!Number.isInteger(n) || n <= 0) notFound();
+  if (!Number.isInteger(n) || n <= 0 || n > 2_147_483_647) notFound();
   const [issue, tax] = await Promise.all([getIssueDetail(viewer, n), getTaxonomy()]);
   if (!issue) notFound();
 
@@ -28,7 +28,7 @@ export default async function IssuePage({ params }: { params: Promise<{ number: 
 
   return (
     <div className="space-y-5">
-      <LiveRefresh seconds={30} />
+      <LiveRefresh seconds={60} />
       <NewIssueToast metooCount={issue.metooCount} pending={issue.approval === "pending"} />
       <Link href="/board" className="inline-flex items-center gap-1.5 text-sm text-ink-muted hover:text-ink">
         <ArrowLeft size={15} /> Board
@@ -151,12 +151,13 @@ export default async function IssuePage({ params }: { params: Promise<{ number: 
             <Progress issue={issue} />
             <dl className="mt-4 space-y-2.5 border-t border-line pt-4 text-sm">
               <Fact icon={Building2} label="Owner" value={issue.department.name} />
-              <Fact icon={Timer} label="Target" value={`${duration(issue.category.slaHours)} · ${new Date(issue.dueAt).toLocaleDateString("en-IN", { day: "numeric", month: "short" })}`} />
+              <Fact icon={Timer} label="Target" value={`${duration(issue.category.slaHours)} · ${new Date(issue.dueAt).toLocaleDateString("en-IN", { timeZone: "Asia/Kolkata", day: "numeric", month: "short" })}`} />
               <Fact icon={Users} label="Affected" value={`${issue.metooCount} ${issue.metooCount === 1 ? "person" : "people"}`} />
               {issue.mergedChildren.length > 0 && <Fact icon={GitMerge} label="Merged in" value={issue.mergedChildren.map((c) => `#${c.number}`).join(", ")} />}
             </dl>
           </div>
-          {issue.viewerCanManage && (
+          {issue.viewerIsMod && issue.approval !== "pending" && <ModerateIssue issueId={issue.id} hidden={issue.hidden} />}
+          {issue.viewerCanManage && issue.approval === "approved" && (
             <ManagePanel
               issueId={issue.id}
               status={issue.status}

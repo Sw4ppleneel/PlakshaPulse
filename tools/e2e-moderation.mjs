@@ -142,18 +142,17 @@ r = await report(s, "Modtest alpha — printer jam on floor two");
 r = await report(s, "Modtest alpha — printer jam on floor two");
 assert.match(r, /already reported this/);
 ok("the same title can't be reported twice");
+r = await report(s, "Modtest beta — door handle loose in block C");
 r = await report(s, "Modtest gamma — vending machine eats coins");
 assert.match(r, /Slow down/);
-assert.equal((await q(`select count(*)::int n from ${mine}`))[0].n, 1);
-ok("a third report inside five minutes is refused (2 per 5 minutes)");
+assert.equal((await q(`select count(*)::int n from ${mine}`))[0].n, 2);
+ok("a third report inside five minutes is refused (2 per 5 minutes); refused attempts don't count");
 
 // lift the burst window only; the queue cap still applies
 await db.query(`delete from rate_hits where key like 'createIssue:300:%demo-student'`);
 r = await report(s, "Modtest delta — stairwell light out");
 await db.query(`delete from rate_hits where key like 'createIssue:300:%demo-student'`);
 r = await report(s, "Modtest epsilon — water cooler leaking");
-await db.query(`delete from rate_hits where key like 'createIssue:300:%demo-student'`);
-r = await report(s, "Modtest zeta — bench broken near the gate");
 assert.match(r, /waiting for approval/);
 assert.equal((await q(`select count(*)::int n from ${mine} and approval = 'pending'`))[0].n, 3);
 ok("no more than 3 reports from one person can sit in the queue");

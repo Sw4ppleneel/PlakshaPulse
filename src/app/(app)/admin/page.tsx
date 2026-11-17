@@ -24,7 +24,7 @@ export default async function AdminPage() {
     triages ? getTriage(viewer) : Promise.resolve({ untriaged: [], overdue: [], awaiting: [] }),
     mod ? getFlagQueue() : Promise.resolve([]),
     mod ? getReviewQueue(viewer) : Promise.resolve([]),
-    mod ? getHiddenContent() : Promise.resolve([]),
+    mod ? getHiddenContent(viewer) : Promise.resolve([]),
     mod ? getModerationLog(viewer) : Promise.resolve([]),
     getTaxonomy(),
   ]);
@@ -33,7 +33,7 @@ export default async function AdminPage() {
 
   return (
     <div className="space-y-6">
-      <LiveRefresh seconds={30} />
+      <LiveRefresh seconds={60} />
       <PageHeader
         title={isAdmin ? "Admin" : mod ? "Moderation" : `${deptName ?? "Department"} queue`}
         sub={
@@ -167,7 +167,7 @@ export default async function AdminPage() {
                         <span className={cn("inline-flex h-6 items-center rounded-full px-2.5 text-xs font-medium", h.state === "rejected" ? "bg-danger-soft text-danger" : "bg-surface-2 text-ink-2")}>
                           {h.state === "rejected" ? "Rejected" : "Hidden"} {h.kind}
                         </span>
-                        <span>{h.author}</span>
+                        <span>{h.author ?? "Posted anonymously"}</span>
                         <span suppressHydrationWarning>· {timeAgo(h.at)}</span>
                       </div>
                       <Link href={h.href} className="mt-1.5 line-clamp-2 block text-sm font-medium leading-snug hover:underline">

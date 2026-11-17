@@ -15,6 +15,7 @@ import {
   issueWatchers,
   locations,
   notifications,
+  user,
   verifications,
 } from "@/db/schema";
 import {
@@ -30,8 +31,9 @@ import {
   REOPEN_QUORUM,
   type Status,
 } from "@/lib/constants";
-import { canManage, isTrusted, requireViewer } from "../dal";
-import { processImage } from "../images";
+import { canManage, isMod, isTrusted, requireViewer } from "../dal";
+import { processImages } from "../images";
+import { recountComments } from "../counts";
 import { notifyWatchers, watch } from "../notify";
 import { limit } from "../rate-limit";
 import { run, UserError } from "../safe-action";
@@ -61,8 +63,6 @@ const createSchema = z.object({
 export async function createIssue(form: FormData) {
   return run(async () => {
     const viewer = await requireViewer();
-    await limit("createIssue", viewer.id);
-
     const input = createSchema.parse({
       title: String(form.get("title") ?? ""),
       body: String(form.get("body") ?? ""),
@@ -103,7 +103,9 @@ export async function createIssue(form: FormData) {
     }
 
     // Decode images before opening the transaction so a bad file fails fast.
-    const photos = await Promise.all(files.map((f) => processImage(f).catch((e: Error) => Promise.reject(new UserError(e.message)))));
+    // Counted only once the post has passed every check, so a rejected attempt doesn't use up the allowance.
+    await limit("createIssue", viewer.id);
+    const photos = await processImages(files);
 
     const created = await db.transaction(async (tx) => {
       const [issue] = await tx
@@ -204,8 +206,12 @@ export async function toggleWatch(issueId: string) {
       .where(and(eq(issueWatchers.issueId, id), eq(issueWatchers.userId, viewer.id)))
       .returning();
     if (del.length) return { watching: false };
-    const [exists] = await db.select({ id: issues.id }).from(issues).where(eq(issues.id, id)).limit(1);
-    if (!exists) throw new UserError("Issue not found");
+    const [exists] = await db
+      .select({ hidden: issues.hidden, departmentId: issues.departmentId, reporterId: issues.reporterId })
+      .from(issues)
+      .where(eq(issues.id, id))
+      .limit(1);
+    if (!exists || (exists.hidden && !isMod(viewer) && !canManage(viewer, exists.departmentId) && exists.reporterId !== viewer.id)) throw new UserError("Issue not found");
     await watch(db, id, viewer.id);
     return { watching: true };
   });
@@ -257,6 +263,7 @@ export async function addComment(input: z.input<typeof commentSchema>) {
         body: data.body,
         anonymous: official ? false : data.anonymous,
         official,
+        departmentId: official && viewer.role === "staff" ? viewer.departmentId : null,
         hidden: !live,
         approval: live ? "approved" : "pending",
       });
@@ -304,11 +311,13 @@ export async function verifyFix(input: z.input<typeof verifySchema>) {
       if (!issue || issue.hidden) throw new UserError("Issue not found");
       if (issue.status !== "resolved") throw new UserError("This issue isn't awaiting confirmation.");
 
+      // Only people who were affected before it was marked fixed can answer; a me-too added
+      // afterwards (or a second account) can't swing the result.
       const [voted] = await tx
         .select({ u: issueVotes.userId })
         .from(issueVotes)
-        .where(and(eq(issueVotes.issueId, issue.id), eq(issueVotes.userId, viewer.id)));
-      if (!voted) throw new UserError("Only people who reported or me-too'd this can confirm the fix.");
+        .where(and(eq(issueVotes.issueId, issue.id), eq(issueVotes.userId, viewer.id), issue.resolvedAt ? sql`${issueVotes.createdAt} <= ${issue.resolvedAt}` : sql`true`));
+      if (!voted) throw new UserError("Only people who reported or me-too'd this before it was marked fixed can confirm it.");
 
       const inserted = await tx
         .insert(verifications)
@@ -317,10 +326,17 @@ export async function verifyFix(input: z.input<typeof verifySchema>) {
         .returning();
       if (!inserted.length) throw new UserError("You've already answered.");
 
+      // Answers count only while the person is still counted as affected.
       const tally = await tx
         .select({ fixed: verifications.fixed, n: count() })
         .from(verifications)
-        .where(and(eq(verifications.issueId, issue.id), eq(verifications.round, issue.reopenCount)))
+        .where(
+          and(
+            eq(verifications.issueId, issue.id),
+            eq(verifications.round, issue.reopenCount),
+            sql`exists (select 1 from issue_votes v where v.issue_id = ${issue.id} and v.user_id = ${verifications.userId})`,
+          ),
+        )
         .groupBy(verifications.fixed);
       const fixedN = tally.find((t) => t.fixed)?.n ?? 0;
       const brokenN = tally.find((t) => !t.fixed)?.n ?? 0;
@@ -332,7 +348,14 @@ export async function verifyFix(input: z.input<typeof verifySchema>) {
       if (!data.fixed && (isReporter || brokenN >= reopenQuorum)) {
         await tx
           .update(issues)
-          .set({ status: "in_progress", resolvedAt: null, reopenCount: sql`${issues.reopenCount} + 1`, updatedAt: sql`now()` })
+          .set({
+            status: "in_progress",
+            resolvedAt: null,
+            reopenCount: sql`${issues.reopenCount} + 1`,
+            updatedAt: sql`now()`,
+            // A reopened issue gets a fresh target rather than being instantly overdue.
+            dueAt: sql`now() + make_interval(hours => (select sla_hours from categories c where c.id = ${issues.categoryId}))`,
+          })
           .where(eq(issues.id, issue.id));
         await tx.insert(issueEvents).values({
           issueId: issue.id,
@@ -341,7 +364,8 @@ export async function verifyFix(input: z.input<typeof verifySchema>) {
           type: "reopened",
           fromStatus: "resolved",
           toStatus: "in_progress",
-          note: data.note ?? null,
+          // The note is unreviewed member text: it stays on the verification row for the office, not on the public timeline.
+          note: null,
         });
         await notifyWatchers(tx, issue.id, viewer.id, "status", `#${issue.number} was reopened — reporters say it's still not fixed.`);
         return "reopened";
@@ -358,7 +382,7 @@ export async function verifyFix(input: z.input<typeof verifySchema>) {
           type: "verified",
           fromStatus: "resolved",
           toStatus: "closed",
-          note: data.note ?? null,
+          note: null,
         });
         await notifyWatchers(tx, issue.id, viewer.id, "status", `#${issue.number} is verified fixed by the people who reported it.`);
         return "closed";
@@ -385,17 +409,35 @@ export async function flagContent(input: z.input<typeof flagSchema>) {
     const data = flagSchema.parse(input);
 
     let issueId: string;
+    // Content from an office, a moderator or an admin is never auto-hidden; flags still reach the queue.
+    let protectedPost = false;
     if (data.targetType === "issue") {
-      const [i] = await db.select({ id: issues.id }).from(issues).where(eq(issues.id, data.targetId)).limit(1);
-      if (!i) throw new UserError("Not found");
+      const [i] = await db
+        .select({ id: issues.id, hidden: issues.hidden, approval: issues.approval, role: user.role })
+        .from(issues)
+        .innerJoin(user, eq(user.id, issues.reporterId))
+        .where(eq(issues.id, data.targetId))
+        .limit(1);
+      if (!i || i.hidden || i.approval !== "approved") throw new UserError("Not found");
       issueId = i.id;
+      protectedPost = i.role !== "member";
     } else {
-      const [c] = await db.select({ issueId: comments.issueId }).from(comments).where(eq(comments.id, data.targetId)).limit(1);
-      if (!c) throw new UserError("Not found");
+      const [c] = await db
+        .select({ issueId: comments.issueId, hidden: comments.hidden, approval: comments.approval, official: comments.official, role: user.role, issueHidden: issues.hidden })
+        .from(comments)
+        .innerJoin(user, eq(user.id, comments.authorId))
+        .innerJoin(issues, eq(issues.id, comments.issueId))
+        .where(eq(comments.id, data.targetId))
+        .limit(1);
+      if (!c || c.hidden || c.issueHidden || c.approval !== "approved") throw new UserError("Not found");
       issueId = c.issueId;
+      protectedPost = c.official || c.role !== "member";
     }
 
     await db.transaction(async (tx) => {
+      // Lock the target so two flags arriving together are counted one after the other.
+      if (data.targetType === "issue") await tx.select({ id: issues.id }).from(issues).where(eq(issues.id, data.targetId)).for("update");
+      else await tx.select({ id: comments.id }).from(comments).where(eq(comments.id, data.targetId)).for("update");
       await tx
         .insert(flags)
         .values({ targetType: data.targetType, targetId: data.targetId, issueId, userId: viewer.id, reason: data.reason })
@@ -404,14 +446,15 @@ export async function flagContent(input: z.input<typeof flagSchema>) {
         .select({ n: count() })
         .from(flags)
         .where(and(eq(flags.targetType, data.targetType), eq(flags.targetId, data.targetId), eq(flags.resolved, false)));
-      if (n >= AUTO_HIDE_FLAGS) {
+      if (n >= AUTO_HIDE_FLAGS && !protectedPost) {
         if (data.targetType === "issue") {
           await tx
             .update(issues)
-            .set({ hidden: true, hiddenReason: "Auto-hidden after community flags — pending admin review" })
+            .set({ hidden: true, hiddenReason: "Auto-hidden after community flags — pending admin review", updatedAt: sql`now()` })
             .where(and(eq(issues.id, data.targetId), eq(issues.hidden, false)));
         } else {
           await tx.update(comments).set({ hidden: true }).where(eq(comments.id, data.targetId));
+          await recountComments(tx, issueId);
         }
       }
     });
@@ -424,6 +467,7 @@ export async function flagContent(input: z.input<typeof flagSchema>) {
 export async function markAllRead() {
   return run(async () => {
     const viewer = await requireViewer();
+    await limit("vote", viewer.id);
     await db
       .update(notifications)
       .set({ readAt: sql`now()` })

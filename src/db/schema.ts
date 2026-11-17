@@ -232,6 +232,8 @@ export const comments = pgTable(
     body: text("body").notNull(),
     anonymous: boolean("anonymous").notNull().default(false),
     official: boolean("official").notNull().default(false), // posted on behalf of a department
+    /** The office an official post was made for, fixed at posting time (null = campus admin). */
+    departmentId: text("department_id"),
     hidden: boolean("hidden").notNull().default(false),
     approval: approvalEnum("approval").notNull().default("approved"),
     createdAt: ts("created_at").notNull().defaultNow(),
@@ -457,6 +459,8 @@ export const proposalPosts = pgTable(
     fromStage: proposalStageEnum("from_stage"),
     toStage: proposalStageEnum("to_stage"),
     official: boolean("official").notNull().default(false),
+    /** The office an official post was made for, fixed at posting time (null = campus admin). */
+    departmentId: text("department_id"),
     body: text("body"),
     hidden: boolean("hidden").notNull().default(false),
     approval: approvalEnum("approval").notNull().default("approved"),

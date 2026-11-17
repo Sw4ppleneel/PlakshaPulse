@@ -48,7 +48,7 @@ export function SupportPanel({
         toast.error("Pick your batch or group — it's what makes the numbers useful.");
         return;
       }
-      const r = await supportProposal({ proposalId, usage, volunteer, showName, reason, cohort: group });
+      const r = await supportProposal({ proposalId, usage, volunteer, showName, reason, cohort: group as (typeof COHORTS)[number] });
       if (!r.ok) {
         toast.error(r.error);
         return;
@@ -362,10 +362,12 @@ export function MovePanel({
   departmentId,
   departments,
   trialPlan,
+  isAuthor,
 }: {
   proposalId: string;
   stage: Stage;
   canDecide: boolean;
+  isAuthor: boolean;
   isAdmin: boolean;
   hidden: boolean;
   departmentId: string | null;
@@ -373,7 +375,7 @@ export function MovePanel({
   trialPlan: string | null;
 }) {
   const router = useRouter();
-  const moves = canDecide ? STAGE_MOVES[stage] : (AUTHOR_MOVES[stage] ?? []);
+  const moves = canDecide ? STAGE_MOVES[stage] : isAuthor ? (AUTHOR_MOVES[stage] ?? []) : [];
   const [to, setTo] = useState<Stage | null>(null);
   const [note, setNote] = useState("");
   const [dept, setDept] = useState(departmentId ?? "");

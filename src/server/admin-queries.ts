@@ -148,7 +148,7 @@ export type HiddenItem = {
   href: string;
   title: string;
   context: string | null;
-  author: string;
+  author: string | null;
   /** "rejected" when a moderator turned it down from the queue; "hidden" when it was taken down after going public. */
   state: "rejected" | "hidden";
   reason: string | null;
@@ -159,16 +159,17 @@ export type HiddenItem = {
  * Everything that has been hidden or rejected, newest first, so a moderator can find it again and
  * restore it. Pending items are not here; they are in the approval queue.
  */
-export async function getHiddenContent(): Promise<HiddenItem[]> {
-  const r = await db.execute<{ kind: HiddenItem["kind"]; id: string; num: number; title: string; ctx: string | null; author: string; approval: string; reason: string | null; at: Date }>(sql`
+export async function getHiddenContent(viewer: Viewer): Promise<HiddenItem[]> {
+  const named = viewer.role === "admin";
+  const r = await db.execute<{ kind: HiddenItem["kind"]; id: string; num: number; title: string; ctx: string | null; author: string; anon: boolean; approval: string; reason: string | null; at: Date }>(sql`
     select * from (
-      select 'issue' as kind, i.id::text as id, i.number as num, i.title, null::text as ctx, u.name as author, i.approval::text as approval, i.hidden_reason as reason, i.updated_at as at
+      select 'issue' as kind, i.id::text as id, i.number as num, i.title, null::text as ctx, u.name as author, i.anonymous as anon, i.approval::text as approval, i.hidden_reason as reason, i.updated_at as at
       from issues i join "user" u on u.id = i.reporter_id where i.hidden and i.approval <> 'pending'
       union all
-      select 'proposal', p.id::text, p.number, p.title, null, u.name, p.approval::text, p.hidden_reason, p.updated_at
+      select 'proposal', p.id::text, p.number, p.title, null, u.name, false, p.approval::text, p.hidden_reason, p.updated_at
       from proposals p join "user" u on u.id = p.author_id where p.hidden and p.approval <> 'pending'
       union all
-      select 'comment', c.id::text, i.number, c.body, '#' || i.number || ' ' || i.title, u.name, c.approval::text, null, c.created_at
+      select 'comment', c.id::text, i.number, c.body, '#' || i.number || ' ' || i.title, u.name, c.anonymous, c.approval::text, null, c.created_at
       from comments c join issues i on i.id = c.issue_id join "user" u on u.id = c.author_id where c.hidden and c.approval <> 'pending'
     ) q order by at desc limit 100`);
   return r.rows.map((x) => ({
@@ -177,7 +178,7 @@ export async function getHiddenContent(): Promise<HiddenItem[]> {
     href: x.kind === "proposal" ? `/proposals/${x.num}` : `/issues/${x.num}`,
     title: x.title,
     context: x.ctx,
-    author: x.author,
+    author: x.anon && !named ? null : x.author,
     state: x.approval === "rejected" ? "rejected" : "hidden",
     reason: x.reason,
     at: new Date(x.at).toISOString(),

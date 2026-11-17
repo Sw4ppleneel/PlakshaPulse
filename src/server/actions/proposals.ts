@@ -5,9 +5,9 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { db } from "@/db";
 import { attachments, auditLog, departments, notifications, proposalPosts, proposals, proposalSupports, trialCheckins, user, type ProposalStage } from "@/db/schema";
-import { AREAS, AUTHOR_MOVES, DEFAULT_GOAL, MAX_PENDING_COMMENTS, MAX_PENDING_POSTS, MAX_PHOTOS, MAX_PROPOSALS_PER_DAY, PENDING_NOTE, OPEN_STAGES, STAGE_META, STAGE_MOVES, STAGES } from "@/lib/constants";
+import { AREAS, AUTHOR_MOVES, COHORTS, DEFAULT_GOAL, MAX_PENDING_COMMENTS, MAX_PENDING_POSTS, MAX_PHOTOS, MAX_PROPOSALS_PER_DAY, PENDING_NOTE, OPEN_STAGES, STAGE_META, STAGE_MOVES, STAGES } from "@/lib/constants";
 import { canManage, isMod, isTrusted, requireMod, requireViewer, type Viewer } from "../dal";
-import { processImage } from "../images";
+import { processImages } from "../images";
 import { campusDay } from "../proposal-queries";
 import { limit } from "../rate-limit";
 import { run, UserError } from "../safe-action";
@@ -18,11 +18,19 @@ const uuid = z.string().uuid();
 const clean = (s: string) => s.replace(/\u0000/g, "").replace(/[ \t]+\n/g, "\n").trim();
 const text = (min: number, max: number, tooShort: string, tooLong: string) =>
   z.string().transform(clean).pipe(z.string().min(min, tooShort).max(max, tooLong));
+/** A real calendar date (rejects 2026-02-30 and 2026-13-45), within a sane range. */
 const day = z
   .string()
   .regex(/^\d{4}-\d{2}-\d{2}$/, "Use a valid date")
+  .refine((v) => {
+    const d = new Date(v + "T00:00:00Z");
+    return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === v && v >= "2024-01-01" && v <= "2100-01-01";
+  }, "Use a valid date")
   .optional()
   .or(z.literal("").transform(() => undefined));
+/** The batch list people pick from; free text here would be unreviewed public text. */
+const cohort = z.enum(COHORTS, { message: "Pick your batch or group from the list" });
+const daysBetween = (a: string, b: string) => Math.round((Date.parse(b + "T00:00:00Z") - Date.parse(a + "T00:00:00Z")) / 86_400_000);
 
 /** Supporters are the audience for every proposal update — they asked for it. */
 async function notifySupporters(tx: Tx | typeof db, proposalId: string, actorId: string | null, kind: string, message: string) {
@@ -52,13 +60,12 @@ const createSchema = z.object({
   departmentId: z.string().max(40).optional().transform((v) => v || undefined),
   goal: z.coerce.number().int().min(10, "Set a goal of at least 10 people").max(2000, "Goals above 2000 aren't realistic here"),
   trialPlan: z.string().transform(clean).pipe(z.string().max(1000, "Keep the trial idea under 1000 characters")),
-  cohort: z.string().transform(clean).pipe(z.string().max(40)).optional(),
+  cohort: cohort.optional(),
 });
 
 export async function createProposal(form: FormData) {
   return run(async () => {
     const viewer = await requireViewer();
-    await limit("createProposal", viewer.id);
     const input = createSchema.parse({
       title: String(form.get("title") ?? ""),
       ask: String(form.get("ask") ?? ""),
@@ -96,7 +103,9 @@ export async function createProposal(form: FormData) {
     if (same) throw new UserError(`You already proposed this (P-${same.number}).`);
 
     // Decode images before opening the transaction so a bad file fails fast.
-    const photos = await Promise.all(files.map((f) => processImage(f).catch((e: Error) => Promise.reject(new UserError(e.message)))));
+    // Counted only once the post has passed every check, so a rejected attempt doesn't use up the allowance.
+    await limit("createProposal", viewer.id);
+    const photos = await processImages(files);
 
     const created = await db.transaction(async (tx) => {
       if (input.cohort) await tx.update(user).set({ cohort: input.cohort }).where(eq(user.id, viewer.id));
@@ -138,7 +147,7 @@ const supportSchema = z.object({
   volunteer: z.boolean(),
   showName: z.boolean(),
   reason: z.string().transform(clean).pipe(z.string().max(280, "Keep your reason under 280 characters")),
-  cohort: z.string().transform(clean).pipe(z.string().min(2, "Tell us which group you're in").max(40)),
+  cohort,
 });
 
 /** Adds or updates the viewer's support. Re-submitting edits it (usage, volunteer, reason). */
@@ -176,7 +185,11 @@ export async function supportProposal(input: z.input<typeof supportSchema>) {
         .returning({ supportCount: proposals.supportCount });
 
       // Milestone notification to the proposer when the goal is first reached.
-      if (supportCount === p.goal && p.supportCount < p.goal) {
+      const [already] =
+        supportCount >= p.goal && p.supportCount < p.goal
+          ? await tx.select({ id: notifications.id }).from(notifications).where(and(eq(notifications.proposalId, p.id), eq(notifications.kind, "milestone"))).limit(1)
+          : [{ id: "skip" }];
+      if (!already) {
         await tx.insert(notifications).values({
           userId: p.authorId,
           proposalId: p.id,
@@ -233,7 +246,7 @@ export async function moveProposal(input: z.input<typeof stageSchema>) {
       const p = await loadForUpdate(tx, s.proposalId);
       const decider = mayDecide(viewer, p.departmentId);
       const isAuthor = p.authorId === viewer.id;
-      if (p.approval !== "approved" && !decider) throw new UserError("This proposal hasn't been approved yet.");
+      if (p.approval !== "approved" || (p.hidden && !isMod(viewer))) throw new UserError("This proposal isn't public, so it can't be moved.");
       const allowed = decider ? STAGE_MOVES[p.stage] : isAuthor ? (AUTHOR_MOVES[p.stage] ?? []) : [];
       if (!allowed.length) throw new UserError("Only the proposer, the owning office or an admin can move this.");
       if (!allowed.includes(s.to)) throw new UserError(`Can't move from “${STAGE_META[p.stage].label}” to “${STAGE_META[s.to].label}”.`);
@@ -250,6 +263,8 @@ export async function moveProposal(input: z.input<typeof stageSchema>) {
       if (s.to === "trial") {
         if (!s.trialStartsOn || !s.trialEndsOn) throw new UserError("Set the trial's start and end dates.");
         if (s.trialEndsOn < s.trialStartsOn) throw new UserError("The trial can't end before it starts.");
+        if (s.trialEndsOn < campusDay()) throw new UserError("The trial's end date has already passed.");
+        if (daysBetween(s.trialStartsOn, s.trialEndsOn) > 180) throw new UserError("Keep a trial to six months or less.");
       }
       let departmentId = p.departmentId;
       if (s.departmentId && s.departmentId !== p.departmentId) {
@@ -257,6 +272,13 @@ export async function moveProposal(input: z.input<typeof stageSchema>) {
         if (!d) throw new UserError("Unknown office");
         departmentId = d.id;
       }
+      // Something "with the office" or on trial needs an office, or only admins could ever act on it.
+      if ((s.to === "in_review" || s.to === "trial") && !departmentId) throw new UserError("Pick the office this is with.");
+      // A proposer moving their own proposal back and forth would notify every supporter each time.
+      // Counted here, once the move is known to be valid.
+      if (!decider) await limit("stageMove", viewer.id);
+      // A note from a member is public text, so it waits for a moderator like any other post.
+      const noteLive = isTrusted(viewer);
 
       await tx
         .update(proposals)
@@ -266,7 +288,7 @@ export async function moveProposal(input: z.input<typeof stageSchema>) {
           stageChangedAt: new Date(),
           updatedAt: new Date(),
           ...(s.to === "trial" ? { trialStartsOn: s.trialStartsOn, trialEndsOn: s.trialEndsOn, trialPlan: s.trialPlan || p.trialPlan } : {}),
-          ...(["adopted", "declined", "withdrawn"].includes(s.to) ? { decisionNote: s.note } : {}),
+          ...(["adopted", "declined", "withdrawn"].includes(s.to) ? { decisionNote: noteLive ? s.note : null } : {}),
         })
         .where(eq(proposals.id, p.id));
       await tx.insert(proposalPosts).values({
@@ -276,8 +298,13 @@ export async function moveProposal(input: z.input<typeof stageSchema>) {
         fromStage: p.stage,
         toStage: s.to,
         official: decider && !isAuthor,
-        body: s.note || null,
+        departmentId: decider && !isAuthor && viewer.role === "staff" ? departmentId : null,
+        // The stage change itself is public at once; a member's wording waits for a moderator.
+        body: noteLive ? s.note || null : null,
       });
+      if (!noteLive && s.note) {
+        await tx.insert(proposalPosts).values({ proposalId: p.id, authorId: viewer.id, kind: "update", body: s.note, hidden: true, approval: "pending" });
+      }
       await notifySupporters(tx, p.id, viewer.id, "stage", `“${p.title}” is now: ${STAGE_META[s.to].label}.`);
       if (viewer.role === "admin" && !isAuthor) {
         await tx.insert(auditLog).values({ actorId: viewer.id, action: `proposal.${s.to}`, targetType: "proposal", targetId: p.id, detail: s.note.slice(0, 200) });
@@ -326,6 +353,7 @@ export async function postOnProposal(input: z.input<typeof postSchema>) {
         authorId: viewer.id,
         kind: asUpdate ? "update" : "comment",
         official: asUpdate && decider && !isAuthor,
+        departmentId: asUpdate && decider && !isAuthor && viewer.role === "staff" ? p.departmentId : null,
         body: s.body,
         hidden: !live,
         approval: live ? "approved" : "pending",
@@ -376,14 +404,19 @@ export async function setProposalHidden(proposalId: string, hidden: boolean) {
   return run(async () => {
     const viewer = await requireMod();
     const id = uuid.parse(proposalId);
-    const [p] = await db
+    const hide = z.boolean().parse(hidden);
+    const [before] = await db.select().from(proposals).where(eq(proposals.id, id)).limit(1);
+    if (!before) throw new UserError("Proposal not found");
+    await db
       .update(proposals)
-      .set({ hidden, hiddenReason: hidden ? "Hidden by a moderator" : null, updatedAt: new Date(), ...(hidden ? {} : { approval: "approved" as const }) })
-      .where(eq(proposals.id, id))
-      .returning({ number: proposals.number });
-    if (!p) throw new UserError("Proposal not found");
-    await db.insert(auditLog).values({ actorId: viewer.id, action: hidden ? "proposal.hide" : "proposal.restore", targetType: "proposal", targetId: id });
-    revalidatePath(`/proposals/${p.number}`);
+      .set({ hidden: hide, hiddenReason: hide ? "Hidden by a moderator" : null, updatedAt: new Date(), ...(hide ? {} : { approval: "approved" as const }) })
+      .where(eq(proposals.id, id));
+    // Restoring one that never went public is an approval, so the author hears about it.
+    if (!hide && before.approval !== "approved") {
+      await db.insert(notifications).values({ userId: before.authorId, proposalId: id, kind: "review", message: `“${before.title.slice(0, 50)}” is approved and live. Share it to start collecting support.` });
+    }
+    await db.insert(auditLog).values({ actorId: viewer.id, action: hide ? "proposal.hide" : "proposal.restore", targetType: "proposal", targetId: id });
+    revalidatePath(`/proposals/${before.number}`);
     revalidatePath("/proposals");
     return {};
   });
@@ -393,6 +426,7 @@ export async function setPostHidden(postId: string, hidden: boolean) {
   return run(async () => {
     const viewer = await requireMod();
     const id = uuid.parse(postId);
+    hidden = z.boolean().parse(hidden);
     const [post] = await db
       .update(proposalPosts)
       .set({ hidden, ...(hidden ? {} : { approval: "approved" as const }) })

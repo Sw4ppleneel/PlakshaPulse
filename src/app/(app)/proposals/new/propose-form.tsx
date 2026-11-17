@@ -153,7 +153,7 @@ export function ProposeForm({ departments, cohort }: { departments: { id: string
                   <Camera size={18} /> Add
                 </button>
               )}
-              <input ref={fileRef} type="file" accept="image/jpeg,image/png,image/webp,image/heic" multiple hidden onChange={(e) => addPhotos(e.target.files)} />
+              <input ref={fileRef} type="file" accept="image/jpeg,image/png,image/webp" multiple hidden onChange={(e) => addPhotos(e.target.files)} />
             </div>
           </div>
         </div>

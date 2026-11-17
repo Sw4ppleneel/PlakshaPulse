@@ -119,12 +119,12 @@ export async function listProposals(viewer: Viewer, opts: { stage?: "open" | "do
 
 export async function getProposalStats() {
   const r = await db.execute<{ open: number; supporters: number; people: number; adopted: number; trials: number }>(sql`
-    select count(*) filter (where stage in ('gathering','in_review','trial') and not hidden)::int as open,
+    select count(*) filter (where stage in ('gathering','in_review','trial'))::int as open,
            count(*) filter (where stage = 'adopted')::int as adopted,
            count(*) filter (where stage = 'trial')::int as trials,
-           (select count(*) from proposal_supports)::int as supporters,
-           (select count(distinct user_id) from proposal_supports)::int as people
-    from proposals`);
+           (select count(*) from proposal_supports s join proposals sp on sp.id = s.proposal_id where not sp.hidden)::int as supporters,
+           (select count(distinct s.user_id) from proposal_supports s join proposals sp on sp.id = s.proposal_id where not sp.hidden)::int as people
+    from proposals where not hidden`);
   return r.rows[0]!;
 }
 
@@ -157,10 +157,13 @@ export async function getEvidence(proposalId: string) {
       select count(*)::int as total, count(distinct user_id)::int as people,
              count(*) filter (where rating = 3)::int as good, count(*) filter (where rating = 2)::int as ok,
              count(*) filter (where rating = 1)::int as bad
-      from trial_checkins where proposal_id = ${proposalId}`),
+      from trial_checkins t join proposals p on p.id = t.proposal_id
+      where t.proposal_id = ${proposalId} and t.day between coalesce(p.trial_starts_on, '0000') and coalesce(p.trial_ends_on, '9999')`),
     db.execute<{ day: string; n: number; good: number }>(sql`
       select day, count(*)::int as n, count(*) filter (where rating = 3)::int as good
-      from trial_checkins where proposal_id = ${proposalId} group by day order by day`),
+      from trial_checkins t join proposals p on p.id = t.proposal_id
+      where t.proposal_id = ${proposalId} and t.day between coalesce(p.trial_starts_on, '0000') and coalesce(p.trial_ends_on, '9999')
+      group by day order by day`),
   ]);
 
   const usage = { often: 0, sometimes: 0, backing: 0 } as Record<Usage, number>;
@@ -209,9 +212,10 @@ export async function getProposalDetail(viewer: Viewer, number: number) {
   const today = campusDay();
   const [posts, mine, myCheckin, evidence, photos] = await Promise.all([
     db
-      .select({ post: proposalPosts, name: user.name, image: user.image, role: user.role })
+      .select({ post: proposalPosts, name: user.name, image: user.image, role: user.role, office: departments.name })
       .from(proposalPosts)
       .leftJoin(user, eq(user.id, proposalPosts.authorId))
+      .leftJoin(departments, eq(departments.id, proposalPosts.departmentId))
       .where(and(eq(proposalPosts.proposalId, p.id), mod ? sql`true` : sql`(not ${proposalPosts.hidden} or ${proposalPosts.authorId} = ${viewer.id})`))
       .orderBy(asc(proposalPosts.createdAt)),
     db.select().from(proposalSupports).where(and(eq(proposalSupports.proposalId, p.id), eq(proposalSupports.userId, viewer.id))).limit(1),
@@ -264,7 +268,8 @@ export async function getProposalDetail(viewer: Viewer, number: number) {
     trialLive: p.stage === "trial" && (!p.trialStartsOn || p.trialStartsOn <= today) && (!p.trialEndsOn || today <= p.trialEndsOn),
     today,
     open: OPEN_STAGES.includes(p.stage),
-    posts: posts.map(({ post, name, image, role }) => ({
+    posts: posts.map(({ post, name, image, role, office }) => ({
+      office: post.official ? (office ?? "Campus admin") : null,
       id: post.id,
       kind: post.kind,
       fromStage: post.fromStage,

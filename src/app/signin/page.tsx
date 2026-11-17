@@ -9,9 +9,16 @@ export const metadata = { title: "Sign in" };
 
 /** Only same-origin relative paths are allowed as a post-login destination (no open redirects). */
 function safeNext(v: string | string[] | undefined) {
-  const s = Array.isArray(v) ? v[0] : v;
-  if (!s || !s.startsWith("/") || s.startsWith("//") || s.startsWith("/\\") || s.includes("://")) return "/board";
-  return s.slice(0, 200);
+  const s = (Array.isArray(v) ? v[0] : v)?.slice(0, 200);
+  // Browsers drop tabs and newlines in URLs ("/\t/evil.com" becomes "//evil.com"), so parse it the
+  // way a browser would and keep it only if it stays on this site.
+  if (!s || !s.startsWith("/") || /[\u0000-\u001f\\]/.test(s)) return "/board";
+  try {
+    const u = new URL(s, "http://pulse.local");
+    return u.origin === "http://pulse.local" ? u.pathname + u.search : "/board";
+  } catch {
+    return "/board";
+  }
 }
 
 export default async function SignInPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {

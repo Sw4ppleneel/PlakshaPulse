@@ -10,7 +10,7 @@ function list(v: string | undefined) {
 const isProd = process.env.NODE_ENV === "production";
 
 if (isProd) {
-  for (const key of ["DATABASE_URL", "BETTER_AUTH_SECRET", "BETTER_AUTH_URL", "ALLOWED_EMAIL_DOMAIN"]) {
+  for (const key of ["DATABASE_URL", "BETTER_AUTH_SECRET", "BETTER_AUTH_URL", "ALLOWED_EMAIL_DOMAIN", "SMTP_URL"]) {
     if (!process.env[key]) throw new Error(`Missing required env var ${key}`);
   }
   const t = process.env.MICROSOFT_TENANT_ID;
@@ -39,6 +39,8 @@ export const env = {
   smtpUrl: process.env.SMTP_URL || null,
   /** Gmail allows about 500 recipients a day; stop a little short so the last people get a clear message. */
   mailDailyCap: Number(process.env.MAIL_DAILY_CAP) || 450,
+  /** Of the daily emails, how many may go to addresses that have never signed in, so existing users always have some left. */
+  mailDailyCapNew: Number(process.env.MAIL_DAILY_CAP_NEW) || 300,
   mailFrom: process.env.MAIL_FROM || "Plaksha Pulse <no-reply@plaksha.edu.in>",
 };
 
@@ -48,5 +50,8 @@ export function isAllowedEmail(email: string | null | undefined): boolean {
   const e = email.trim().toLowerCase();
   const at = e.lastIndexOf("@");
   if (at < 1 || at !== e.indexOf("@")) return false;
+  // Plain local parts only. Plus-addressing ("me+1@") reaches the same inbox, so allowing it would
+  // let one person hold any number of accounts and get round every per-person limit.
+  if (!/^[a-z0-9](?:[a-z0-9._-]{0,62}[a-z0-9])?$/.test(e.slice(0, at)) || e.slice(0, at).includes("..")) return false;
   return env.allowedDomains.includes(e.slice(at + 1));
 }

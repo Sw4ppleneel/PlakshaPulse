@@ -105,8 +105,16 @@ The design language (palette, radii, ticket shape, nav pattern) follows the kit 
   waiting in the approval queue, the same title or comment can't be posted twice, and sign-in codes
   are limited to 3 per inbox per 10 minutes. Community flags auto-hide content at 5, and
   everything a moderator does is in the audit log.
-- **Uploads.** Size and type are checked, then sharp sniffs the real format, re-encodes to WebP and
-  strips EXIF/GPS. Images are served with `sandbox` CSP and `nosniff`.
+- **Sign-in abuse.** Only plain `@plaksha.edu.in` addresses (no `+tag` variants, which would let
+  one person hold many accounts). Each browser gets a signed id on `/signin`; a code only works
+  in the browser that asked for it, so nobody can burn someone else's code with wrong guesses.
+  Codes are limited per browser, per inbox, and — for addresses that have never signed in — per
+  network and per day, so typing junk can't use up the day's emails for existing users. If the
+  email can't be sent, the person is told instead of waiting for a code that isn't coming.
+  Better Auth endpoints Pulse doesn't use (renaming yourself, password and email changes) are
+  switched off. The `?next=` redirect only ever stays on the site.
+- **Uploads.** Size and type are checked (JPEG, PNG or WebP), then sharp sniffs the real format,
+  decodes one photo at a time under a pixel limit, re-encodes to WebP and strips EXIF/GPS. Images are served with `sandbox` CSP and `nosniff`.
 - **Headers.** Nonce CSP, HSTS, `frame-ancestors 'none'`, a restrictive Permissions-Policy,
   `robots: noindex`.
 - **Verified by scripts.** `npm run security:check` calls privileged server actions directly as a
@@ -135,7 +143,7 @@ Sign in with any demo account. With no SMTP configured, the **code prints in the
 
 Other scripts: `npm run e2e` (issue loop across four accounts), `node tools/e2e-proposals.mjs`
 (proposal pipeline plus its authorization checks), `node tools/e2e-moderation.mjs` (approval and
-spam limits), `npm run security:check`,
+spam limits), `node tools/e2e-security.mjs` (the security review regressions), `npm run security:check`,
 `npm run shots -- <email> <outdir> /board /issues/1`, and `npm run demo:video` (re-records
 `demo/Pulse-demo.mp4`; needs a fresh `--demo` seed and the dev server running).
 

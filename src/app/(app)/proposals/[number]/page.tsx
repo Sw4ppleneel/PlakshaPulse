@@ -21,7 +21,7 @@ const fmtDay = (d: string | null) => (d ? new Date(d + "T00:00:00").toLocaleDate
 export default async function ProposalPage({ params }: { params: Promise<{ number: string }> }) {
   const viewer = await requireViewerPage();
   const n = Number((await params).number);
-  if (!Number.isInteger(n) || n <= 0) notFound();
+  if (!Number.isInteger(n) || n <= 0 || n > 2_147_483_647) notFound();
   const [p, tax, cohort] = await Promise.all([getProposalDetail(viewer, n), getTaxonomy(), getViewerCohort(viewer)]);
   if (!p) notFound();
   const ev = p.evidence;
@@ -29,7 +29,7 @@ export default async function ProposalPage({ params }: { params: Promise<{ numbe
 
   return (
     <div className="space-y-5">
-      <LiveRefresh seconds={30} />
+      <LiveRefresh seconds={60} />
       <Link href="/proposals" className="inline-flex items-center gap-1.5 text-sm text-ink-muted hover:text-ink">
         <ArrowLeft size={15} /> Proposals
       </Link>
@@ -201,6 +201,7 @@ export default async function ProposalPage({ params }: { params: Promise<{ numbe
               proposalId={p.id}
               stage={p.stage}
               canDecide={p.viewerCanDecide}
+              isAuthor={p.viewerIsAuthor}
               isAdmin={p.viewerIsMod}
               hidden={p.hidden}
               departmentId={p.departmentId}
@@ -246,6 +247,8 @@ function TrialCard({ p }: { p: ProposalDetail }) {
         </h2>
         <span className="text-sm text-ink-muted">
           {fmtDay(p.trialStartsOn)} – {fmtDay(p.trialEndsOn)}
+          {!p.trialLive && p.trialEndsOn && p.today > p.trialEndsOn && <span className="ml-2 font-medium text-accent-ink">· Ended, waiting for the office&apos;s decision</span>}
+          {!p.trialLive && p.trialStartsOn && p.today < p.trialStartsOn && <span className="ml-2 font-medium text-ink-2">· Starts soon</span>}
         </span>
       </div>
       {p.trialPlan && <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-ink-2">{p.trialPlan}</p>}
@@ -290,7 +293,7 @@ function TrialCard({ p }: { p: ProposalDetail }) {
 
 function Post({ t, isMod, dept }: { t: ProposalDetail["posts"][number]; isMod: boolean; dept: string | null }) {
   const system = t.kind === "created" || t.kind === "stage";
-  const who = t.official ? (dept ?? "The office") : (t.author?.name ?? "Someone");
+  const who = t.official ? (t.office ?? dept ?? "The office") : (t.author?.name ?? "Someone");
   return (
     <li className={cn("relative flex gap-3", t.hidden && t.approval !== "pending" && "opacity-50")}>
       <span

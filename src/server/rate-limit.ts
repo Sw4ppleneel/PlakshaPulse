@@ -35,6 +35,10 @@ const WRITES = {
     { points: 5, seconds: 10 * 60 },
     { points: 20, seconds: 24 * 3600 },
   ],
+  stageMove: [
+    { points: 2, seconds: 10 * 60 },
+    { points: 6, seconds: 24 * 3600 },
+  ],
   admin: [{ points: 120, seconds: 60 }],
 } satisfies Record<string, Window[]>;
 
@@ -84,4 +88,10 @@ export async function limit(kind: keyof typeof WRITES | keyof typeof READS, key:
  */
 export async function hit(key: string, points: number, windowSeconds: number): Promise<boolean> {
   return (await count(key, windowSeconds)).count <= points;
+}
+
+/** Whether a marker set with `hit` is still live (used to tie a sign-in code to the browser that asked for it). */
+export async function isLive(key: string): Promise<boolean> {
+  const r = await db.execute<{ ok: boolean }>(sql`select exists (select 1 from rate_hits where key = ${key} and reset_at > now()) as ok`);
+  return !!r.rows[0]?.ok;
 }

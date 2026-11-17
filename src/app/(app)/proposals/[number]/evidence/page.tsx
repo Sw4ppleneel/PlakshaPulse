@@ -19,7 +19,7 @@ const day = (d: string | null) => (d ? new Date(d + "T00:00:00").toLocaleDateStr
 export default async function EvidencePack({ params }: { params: Promise<{ number: string }> }) {
   const viewer = await requireViewerPage();
   const n = Number((await params).number);
-  if (!Number.isInteger(n) || n <= 0) notFound();
+  if (!Number.isInteger(n) || n <= 0 || n > 2_147_483_647) notFound();
   const p = await getProposalDetail(viewer, n);
   if (!p) notFound();
   const ev = p.evidence;
@@ -27,7 +27,7 @@ export default async function EvidencePack({ params }: { params: Promise<{ numbe
   const first = ev.growth[0]?.day ?? null;
   const days = p.collectionDays;
   const generated = new Date(p.generatedAt).toLocaleString("en-IN", { timeZone: "Asia/Kolkata", day: "numeric", month: "long", year: "numeric", hour: "numeric", minute: "2-digit" });
-  const officialPosts = p.posts.filter((t) => t.kind === "stage" || t.kind === "update");
+  const officialPosts = p.posts.filter((t) => (t.kind === "stage" || t.kind === "update") && !t.hidden);
 
   return (
     <div className="mx-auto max-w-3xl">
@@ -166,7 +166,7 @@ export default async function EvidencePack({ params }: { params: Promise<{ numbe
               {officialPosts.map((t) => (
                 <li key={t.id} className="break-inside-avoid">
                   <span className="text-ink-muted">{new Date(t.createdAt).toLocaleDateString("en-IN", { timeZone: "Asia/Kolkata", day: "numeric", month: "short" })} · </span>
-                  <b>{t.official ? (p.departmentName ?? "The office") : (t.author?.name ?? "—")}</b>
+                  <b>{t.official ? (t.office ?? p.departmentName ?? "The office") : (t.author?.name ?? "—")}</b>
                   {t.kind === "stage" && t.toStage && <> moved it to {STAGE_META[t.toStage].label}</>}
                   {t.kind === "update" && <> posted an update</>}
                   {t.body && <span className="text-ink-2">: {t.body}</span>}

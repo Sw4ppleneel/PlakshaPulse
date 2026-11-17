@@ -1,4 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
+import { DEVICE_COOKIE, newDeviceToken, verifyDeviceToken } from "@/lib/device";
 
 /**
  * Optimistic layer only: adds a per-request CSP nonce and bounces visitors without a session
@@ -6,9 +7,8 @@ import { NextResponse, type NextRequest } from "next/server";
  * on every page, action and route handler — never rely on this file for security.
  */
 const PUBLIC = ["/", "/signin", "/about"];
-const DEVICE_COOKIE = "pulse_device";
 
-export function proxy(request: NextRequest) {
+export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const nonce = Buffer.from(crypto.randomUUID()).toString("base64");
   const isDev = process.env.NODE_ENV === "development";
@@ -44,8 +44,8 @@ export function proxy(request: NextRequest) {
   const res = NextResponse.next({ request: { headers: requestHeaders } });
   res.headers.set("Content-Security-Policy", csp);
   // A random per-browser id, used only to rate-limit sign-in code requests (see lib/auth.ts).
-  if (pathname === "/signin" && !request.cookies.has(DEVICE_COOKIE)) {
-    res.cookies.set(DEVICE_COOKIE, crypto.randomUUID(), { httpOnly: true, sameSite: "lax", secure: !isDev, path: "/", maxAge: 60 * 60 * 24 * 365 });
+  if (pathname === "/signin" && !(await verifyDeviceToken(request.cookies.get(DEVICE_COOKIE)?.value))) {
+    res.cookies.set(DEVICE_COOKIE, await newDeviceToken(), { httpOnly: true, sameSite: "lax", secure: !isDev, path: "/", maxAge: 60 * 60 * 24 * 365 });
   }
   return res;
 }
