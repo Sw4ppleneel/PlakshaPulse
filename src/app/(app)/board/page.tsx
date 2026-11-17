@@ -1,11 +1,11 @@
-import { Flame, Radio } from "lucide-react";
 import Link from "next/link";
 import { BoardToolbar } from "@/components/board-toolbar";
 import { BubbleField } from "@/components/bubble-field";
 import { IssueRow } from "@/components/issue-row";
 import { LiveRefresh } from "@/components/shell";
-import { CategoryIcon, EmptyState, Stat, StatusPill, buttonClass } from "@/components/ui";
-import { duration, pct } from "@/lib/format";
+import { Stagger, StaggerItem } from "@/components/motion";
+import { EmptyState, PageHeader, buttonClass } from "@/components/ui";
+import { duration } from "@/lib/format";
 import { requireViewerPage } from "@/server/dal";
 import { getPulseStats, getTaxonomy, listIssues, type BoardFilter } from "@/server/queries";
 import { sweep } from "@/server/sweep";
@@ -37,29 +37,17 @@ export default async function BoardPage({ searchParams }: { searchParams: Promis
   const hottest = [...issues].sort((a, b) => b.heat - a.heat).slice(0, 6);
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-6">
       <LiveRefresh seconds={20} />
-      <section className="flex flex-wrap items-end justify-between gap-4 animate-rise">
-        <div>
-          <div className="inline-flex items-center gap-1.5 rounded-full bg-brand-soft px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.1em] text-brand">
-            <Radio size={12} className="animate-pulse" /> Live campus pulse
-          </div>
-          <h1 className="font-display mt-2 text-[34px] leading-[1.05] tracking-tight sm:text-[44px]">
-            What&apos;s broken at Plaksha, <span className="italic text-brand">right now.</span>
-          </h1>
-          <p className="mt-2 max-w-xl text-[15px] text-ink-muted">
-            Every report is public to the whole campus — students, faculty and admin. Bubbles grow as more people say <b className="text-ink">me too</b>.
-          </p>
-        </div>
-      </section>
-
-      <section className="card grid grid-cols-2 gap-x-6 gap-y-5 p-5 sm:grid-cols-5 sm:p-6">
-        <Stat label="Active issues" value={stats.active} tone="brand" />
-        <Stat label="Reported · 7d" value={stats.reportedWeek} />
-        <Stat label="Fixed · 7d" value={stats.fixedWeek} tone="ok" />
-        <Stat label="Median fix time" value={duration(stats.medianHours)} hint="last 30 days" />
-        <Stat label="Fixed on time" value={pct(stats.onTime)} hint={`${stats.people} people weighed in`} />
-      </section>
+      <PageHeader
+        title="Issues"
+        sub={
+          <span className="tabular">
+            {stats.active} active · {stats.fixedWeek} fixed this week
+            {stats.medianHours != null && ` · usually fixed in ${duration(stats.medianHours)}`}
+          </span>
+        }
+      />
 
       <BoardToolbar categories={tax.categories} locations={tax.locations} counts={counts} />
 
@@ -75,76 +63,42 @@ export default async function BoardPage({ searchParams }: { searchParams: Promis
           </EmptyState>
         </div>
       ) : mode === "bubbles" ? (
-        <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_320px]">
-          <div className="card dot-grid overflow-hidden">
+        <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_300px]">
+          <div className="card overflow-hidden">
             <BubbleField
               issues={issues}
               categories={tax.categories.map((c) => ({ id: c.id, name: c.name, color: c.color }))}
               groupBy={one(sp.group) === "category" ? "category" : "none"}
-              height={600}
+              height={560}
             />
-            <Legend />
+            <p className="px-5 pb-4 text-[13px] text-ink-muted">Bigger means more people affected. A glow means it&apos;s active right now.</p>
           </div>
-          <aside className="card h-fit overflow-hidden">
-            <div className="flex items-center gap-2 border-b border-line px-4 py-3 font-semibold">
-              <Flame size={16} className="text-[#E4572E]" /> Heating up
-            </div>
-            <ol>
-              {hottest.map((i, idx) => {
-                const c = cats.get(i.categoryId);
-                return (
-                  <li key={i.id}>
-                    <Link href={`/issues/${i.number}`} className="flex gap-3 border-b border-line px-4 py-3 last:border-0 hover:bg-surface-2">
-                      <span className="font-display w-5 shrink-0 text-lg leading-6 text-ink-muted tabular">{idx + 1}</span>
-                      <span className="min-w-0">
-                        <span className="line-clamp-2 text-sm font-medium leading-snug">{i.title}</span>
-                        <span className="mt-1 flex items-center gap-2 text-xs text-ink-muted">
-                          {c && <CategoryIcon icon={c.icon} color={c.color} size={12} />}
-                          <b className="text-ink tabular">{i.metooCount}</b> affected
-                          <StatusPill status={i.status} short />
-                        </span>
-                      </span>
-                    </Link>
-                  </li>
-                );
-              })}
-            </ol>
+          <aside className="card h-fit p-2">
+            <h2 className="px-3 pb-1 pt-3 text-base font-semibold">Heating up</h2>
+            <Stagger as="ol">
+              {hottest.map((i) => (
+                <StaggerItem as="li" key={i.id}>
+                  <Link href={`/issues/${i.number}`} className="flex items-center gap-3 rounded-2xl px-3 py-2.5 transition-colors hover:bg-surface-2">
+                    <span className="inline-flex size-10 shrink-0 items-center justify-center rounded-full bg-surface-2 text-sm font-semibold tabular">{i.metooCount}</span>
+                    <span className="min-w-0">
+                      <span className="line-clamp-2 text-sm font-medium leading-snug">{i.title}</span>
+                      <span className="mt-0.5 block text-xs text-ink-muted">{cats.get(i.categoryId)?.name}</span>
+                    </span>
+                  </Link>
+                </StaggerItem>
+              ))}
+            </Stagger>
           </aside>
         </div>
       ) : (
-        <div className="card divide-y divide-line overflow-hidden">
+        <Stagger className="card overflow-hidden p-1.5">
           {issues.map((i) => (
-            <IssueRow key={i.id} issue={i} cat={cats.get(i.categoryId)} locationName={i.locationId ? locs.get(i.locationId) : undefined} />
+            <StaggerItem key={i.id}>
+              <IssueRow issue={i} cat={cats.get(i.categoryId)} locationName={i.locationId ? locs.get(i.locationId) : undefined} />
+            </StaggerItem>
           ))}
-        </div>
+        </Stagger>
       )}
-    </div>
-  );
-}
-
-function Legend() {
-  return (
-    <div className="flex flex-wrap items-center gap-x-5 gap-y-2 border-t border-line bg-surface/80 px-4 py-3 text-xs text-ink-muted backdrop-blur">
-      <span className="inline-flex items-center gap-1.5">
-        <span className="inline-flex items-end gap-0.5">
-          <span className="size-2 rounded-full bg-ink-muted/50" />
-          <span className="size-3.5 rounded-full bg-ink-muted/50" />
-        </span>
-        Size = people affected
-      </span>
-      <span className="inline-flex items-center gap-1.5">
-        <span className="size-3.5 rounded-full bg-brand/40 shadow-[0_0_10px_var(--brand)]" /> Glow = recent activity
-      </span>
-      <span className="inline-flex items-center gap-1.5">
-        <span className="size-3.5 rounded-full border border-dashed border-ink-muted" /> New
-      </span>
-      <span className="inline-flex items-center gap-1.5">
-        <span className="size-3.5 rounded-full border-2 border-brand border-r-transparent" /> In progress
-      </span>
-      <span className="inline-flex items-center gap-1.5">
-        <span className="size-3.5 rounded-full border-2 border-ok" /> Fixed, awaiting confirmation
-      </span>
-      <span className="ml-auto hidden sm:inline">Drag bubbles · click to open</span>
     </div>
   );
 }

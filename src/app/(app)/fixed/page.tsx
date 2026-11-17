@@ -16,10 +16,10 @@ export default async function FixedPage() {
   return (
     <div className="space-y-6">
       <div className="animate-rise">
-        <div className="inline-flex items-center gap-1.5 rounded-full bg-ok-soft px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.1em] text-ok">
+        <div className="inline-flex items-center gap-1.5 rounded-full bg-ok-soft px-2.5 py-1 text-[13px] text-ok">
           <CheckCircle2 size={12} /> Public resolution log
         </div>
-        <h1 className="font-display mt-2 text-[34px] leading-tight tracking-tight sm:text-[42px]">What got fixed</h1>
+        <h1 className="title">What got fixed</h1>
         <p className="mt-1 max-w-xl text-[15px] text-ink-muted">Every fix, what was done, how long it took — and whether the people who reported it agreed.</p>
       </div>
       <section className="card grid grid-cols-2 gap-6 p-5 sm:grid-cols-4 sm:p-6">

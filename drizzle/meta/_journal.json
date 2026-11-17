@@ -8,6 +8,41 @@
       "when": 1794324060181,
       "tag": "0000_init",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1794937873193,
+      "tag": "0001_proposals",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1794938115073,
+      "tag": "0002_proposal_photos",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1794938545508,
+      "tag": "0003_rate_hits",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1794944212310,
+      "tag": "0004_approval",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1794946523416,
+      "tag": "0005_strip_batch_from_names",
+      "breakpoints": true
     }
   ]
 }

@@ -19,7 +19,7 @@ export default async function SignInPage({ searchParams }: { searchParams: Promi
   const next = safeNext(sp.next);
   if (await getViewer()) redirect(next);
   return (
-    <div className="dot-grid flex min-h-dvh flex-col items-center justify-center px-4 py-10">
+    <div className="flex min-h-dvh flex-col items-center justify-center px-4 py-10">
       <Link href="/" className="mb-8">
         <Logo size={34} />
       </Link>

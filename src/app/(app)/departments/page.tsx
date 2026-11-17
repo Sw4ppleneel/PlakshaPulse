@@ -12,7 +12,7 @@ export default async function DepartmentsPage() {
   return (
     <div className="space-y-6">
       <div className="animate-rise">
-        <h1 className="font-display text-[34px] leading-tight tracking-tight sm:text-[42px]">Who&apos;s on it</h1>
+        <h1 className="title">Who&apos;s on it</h1>
         <p className="mt-1 max-w-2xl text-[15px] text-ink-muted">
           Every office&apos;s queue and track record, computed live from the board. Fix times and on-time rates cover the last 90 days.
         </p>
@@ -59,7 +59,7 @@ export default async function DepartmentsPage() {
 function Metric({ label, value, className }: { label: string; value: string; className?: string }) {
   return (
     <div>
-      <div className="text-[10.5px] font-semibold uppercase tracking-[0.08em] text-ink-muted">{label}</div>
+      <div className="text-[13px] text-ink-muted">{label}</div>
       <div className={cn("font-display mt-1 text-2xl tabular", className)}>{value}</div>
     </div>
   );

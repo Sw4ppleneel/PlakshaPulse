@@ -3,6 +3,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { LiveRefresh } from "@/components/shell";
 import { MetooButton } from "@/components/metoo-button";
+import { ApprovalBanner, ApprovalTag, ReviewActions } from "@/components/review";
 import { Avatar, CategoryIcon, SlaChip, StatusPill } from "@/components/ui";
 import { ACTIVE_STATUSES, SEVERITY_META, STATUS_META } from "@/lib/constants";
 import { cn, duration, hoursBetween, timeAgo } from "@/lib/format";
@@ -28,20 +29,12 @@ export default async function IssuePage({ params }: { params: Promise<{ number: 
   return (
     <div className="space-y-5">
       <LiveRefresh seconds={30} />
-      <NewIssueToast metooCount={issue.metooCount} />
+      <NewIssueToast metooCount={issue.metooCount} pending={issue.approval === "pending"} />
       <Link href="/board" className="inline-flex items-center gap-1.5 text-sm text-ink-muted hover:text-ink">
         <ArrowLeft size={15} /> Board
       </Link>
 
-      {issue.hidden && (
-        <div className="flex items-start gap-3 rounded-2xl border border-danger/30 bg-danger-soft p-4 text-sm text-danger">
-          <EyeOff size={18} className="mt-0.5 shrink-0" />
-          <div>
-            <b>Hidden from the board.</b> Only you{issue.viewerCanManage ? ", the department and admins" : " and admins"} can see this.
-            {issue.hiddenReason && <div className="mt-0.5 opacity-80">Reason: {issue.hiddenReason}</div>}
-          </div>
-        </div>
-      )}
+      <ApprovalBanner kind="issue" id={issue.id} approval={issue.approval} hidden={issue.hidden} reason={issue.hiddenReason} canReview={issue.viewerIsMod} mine={issue.viewerIsReporter} />
       {issue.duplicateOf && (
         <Link
           href={`/issues/${issue.duplicateOf.number}`}
@@ -58,7 +51,7 @@ export default async function IssuePage({ params }: { params: Promise<{ number: 
         <article className="min-w-0 space-y-5">
           <div className="card p-5 sm:p-7 animate-rise">
             <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-sm">
-              <span className="inline-flex items-center gap-1.5 font-semibold" style={{ color: issue.category.color }}>
+              <span className="inline-flex items-center gap-1.5 font-medium text-ink-2">
                 <CategoryIcon icon={issue.category.icon} color={issue.category.color} size={15} /> {issue.category.name}
               </span>
               {issue.location && (
@@ -72,7 +65,7 @@ export default async function IssuePage({ params }: { params: Promise<{ number: 
             <h1 className="font-display mt-3 text-[28px] leading-[1.15] tracking-tight sm:text-[34px]">{issue.title}</h1>
             <div className="mt-3 flex flex-wrap items-center gap-2">
               <StatusPill status={issue.status} />
-              <SlaChip dueAt={issue.dueAt} status={issue.status} />
+              {issue.approval === "approved" && <SlaChip dueAt={issue.dueAt} status={issue.status} />}
               {issue.severity === "high" && <span className="rounded-full bg-danger-soft px-2 py-0.5 text-[11px] font-semibold text-danger">{SEVERITY_META.high.label}</span>}
               {issue.reopenCount > 0 && (
                 <span className="inline-flex items-center gap-1 rounded-full bg-warn-soft px-2 py-0.5 text-[11px] font-semibold text-warn">
@@ -85,7 +78,7 @@ export default async function IssuePage({ params }: { params: Promise<{ number: 
               <span>
                 {issue.reporter ? <b className="text-ink">{issue.viewerIsReporter ? "You" : issue.reporter.name}</b> : <b className="text-ink">Anonymous Plaksha member</b>}
                 {issue.anonymous && issue.reporter && (
-                  <span className="ml-1.5 rounded bg-surface-2 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide">
+                  <span className="ml-1.5 rounded bg-surface-2 px-1.5 py-0.5 text-[11px] font-medium">
                     {issue.viewerIsReporter ? "posted anonymously" : "anonymous to others"}
                   </span>
                 )}
@@ -138,21 +131,21 @@ export default async function IssuePage({ params }: { params: Promise<{ number: 
             </h2>
             <ol className="relative space-y-3 before:absolute before:bottom-3 before:left-[15px] before:top-3 before:w-px before:bg-line-strong">
               {issue.timeline.map((t) => (
-                <TimelineEntry key={t.id} item={t} canModerate={issue.viewerIsAdmin} />
+                <TimelineEntry key={t.id} item={t} canModerate={issue.viewerIsMod} />
               ))}
             </ol>
           </section>
 
-          {issue.status !== "duplicate" && (
+          {issue.status !== "duplicate" && !issue.hidden && (
             <CommentComposer issueId={issue.id} canOfficial={issue.viewerCanManage} departmentName={issue.department.name} closed={!active} />
           )}
         </article>
 
         <aside className="space-y-4 lg:sticky lg:top-24 lg:h-fit">
-          <MetooButton issueId={issue.id} count={issue.metooCount} voted={issue.viewerVoted} disabled={!active} size="lg" isReporter={issue.viewerIsReporter} />
+          <MetooButton issueId={issue.id} count={issue.metooCount} voted={issue.viewerVoted} disabled={!active || issue.hidden} size="lg" isReporter={issue.viewerIsReporter} />
           <div className="card p-4">
             <div className="flex items-center justify-between">
-              <div className="text-[11px] font-semibold uppercase tracking-[0.08em] text-ink-muted">Progress</div>
+              <div className="text-[13px] text-ink-muted">Progress</div>
               <WatchButton issueId={issue.id} watching={issue.viewerWatching} />
             </div>
             <Progress issue={issue} />
@@ -235,11 +228,11 @@ function Progress({ issue }: { issue: IssueDetail }) {
         const current = i === idx;
         return (
           <li key={s.key} className="relative flex gap-3 pb-3 last:pb-0">
-            {i < steps.length - 1 && <span className={cn("absolute left-[9px] top-5 h-[calc(100%-14px)] w-0.5", i < idx ? "bg-brand" : "bg-line")} />}
+            {i < steps.length - 1 && <span className={cn("absolute left-[9px] top-5 h-[calc(100%-14px)] w-0.5", i < idx ? "bg-mint" : "bg-line")} />}
             <span
               className={cn(
                 "relative z-10 mt-0.5 inline-flex size-5 shrink-0 items-center justify-center rounded-full",
-                done ? "bg-brand text-brand-ink" : "border-2 border-line-strong bg-surface",
+                done ? "bg-mint text-brand-ink" : "bg-surface-3",
                 current && "ring-4 ring-brand/20",
               )}
             >
@@ -266,7 +259,7 @@ function TimelineEntry({ item, canModerate }: { item: TimelineItem; canModerate:
       <li className="relative flex gap-3 animate-rise">
         <span className="relative z-10 shrink-0">
           {item.official ? (
-            <span className="inline-flex size-8 items-center justify-center rounded-full bg-brand text-brand-ink ring-4 ring-bg">
+            <span className="inline-flex size-8 items-center justify-center rounded-full bg-mint text-brand-ink ring-4 ring-bg">
               <ShieldCheck size={15} />
             </span>
           ) : item.authorImage !== null || item.author !== "Anonymous Plaksha member" ? (
@@ -277,21 +270,23 @@ function TimelineEntry({ item, canModerate }: { item: TimelineItem; canModerate:
             </span>
           )}
         </span>
-        <div className={cn("card min-w-0 flex-1 px-4 py-3", item.official && "border-[color-mix(in_srgb,var(--brand)_40%,transparent)] bg-brand-soft/40", item.hidden && "opacity-60")}>
+        <div className={cn("card min-w-0 flex-1 px-4 py-3", item.official && "border-[color-mix(in_srgb,var(--brand)_40%,transparent)] bg-brand-soft/40", item.hidden && item.approval !== "pending" && "opacity-60")}>
           <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-sm">
             <b>{item.author}</b>
-            {item.official && <span className="rounded-full bg-brand px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-brand-ink">Official</span>}
+            {item.official && <span className="rounded-full bg-mint px-2 py-0.5 text-[11px] font-medium text-brand-ink">Official</span>}
             {item.realAuthor && <span className="text-xs text-ink-muted">({item.realAuthor})</span>}
             <span className="text-xs text-ink-muted" suppressHydrationWarning>
               {timeAgo(item.createdAt)}
             </span>
-            {item.hidden && <span className="text-xs font-semibold text-danger">hidden</span>}
+            <ApprovalTag approval={item.approval} />
+            {item.hidden && item.approval === "approved" && <span className="text-xs font-medium text-danger">hidden</span>}
             <span className="ml-auto flex items-center gap-3">
-              {canModerate && <HideCommentButton commentId={item.id} hidden={item.hidden} />}
-              {!item.mine && <FlagButton targetType="comment" targetId={item.id} compact />}
+              {canModerate && item.approval !== "pending" && <HideCommentButton commentId={item.id} hidden={item.hidden} />}
+              {!item.mine && !item.hidden && <FlagButton targetType="comment" targetId={item.id} compact />}
             </span>
           </div>
           <p className="mt-1 whitespace-pre-wrap text-[15px] leading-relaxed text-ink-2">{item.body}</p>
+          {canModerate && item.approval === "pending" && <ReviewActions kind="comment" id={item.id} className="mt-3" />}
         </div>
       </li>
     );
@@ -353,7 +348,7 @@ function TimelineEntry({ item, canModerate }: { item: TimelineItem; canModerate:
       : item.type === "reopened"
         ? "bg-warn text-white"
         : item.toStatus === "resolved"
-          ? "bg-accent text-[#3d2a00]"
+          ? "bg-accent text-[#3a2a00]"
           : item.type === "created"
             ? "bg-ink text-bg"
             : "bg-surface-3 text-ink-2";

@@ -10,20 +10,22 @@ import { cn } from "@/lib/format";
 import { addComment, flagContent, toggleWatch, verifyFix } from "@/server/actions/issues";
 import { mergeIssue, moderate, reassignIssue, updateStatus } from "@/server/actions/manage";
 
-export function NewIssueToast({ metooCount }: { metooCount: number }) {
+export function NewIssueToast({ metooCount, pending }: { metooCount: number; pending: boolean }) {
   const sp = useSearchParams();
   const router = useRouter();
   const done = useRef(false);
   useEffect(() => {
     if (sp.get("new") === "1" && !done.current) {
       done.current = true;
-      toast.success("Posted! It's live on the board.", {
-        description: metooCount > 1 ? `${metooCount} people affected so far.` : "Share it — every me-too makes it bigger. You'll be notified on each update.",
-        duration: 5000,
-      });
+      if (pending) toast.success("Sent for approval", { description: "A moderator will look at it shortly. It goes on the board as soon as it's approved.", duration: 5000 });
+      else
+        toast.success("Posted! It's live on the board.", {
+          description: metooCount > 1 ? `${metooCount} people affected so far.` : "Share it — every me-too makes it bigger. You'll be notified on each update.",
+          duration: 5000,
+        });
       router.replace(window.location.pathname, { scroll: false });
     }
-  }, [sp, router, metooCount]);
+  }, [sp, router, metooCount, pending]);
   return null;
 }
 
@@ -104,7 +106,7 @@ export function VerifyCard({ issueId, fixed, broken, viewer, eligible }: { issue
   return (
     <div className="rounded-2xl border-2 border-[color-mix(in_srgb,var(--accent)_70%,transparent)] bg-accent-soft p-4 sm:p-5">
       <div className="flex items-start gap-3">
-        <span className="inline-flex size-10 shrink-0 items-center justify-center rounded-full bg-accent text-[#3d2a00]">
+        <span className="inline-flex size-10 shrink-0 items-center justify-center rounded-full bg-accent text-[#3a2a00]">
           <CheckCircle2 size={20} />
         </span>
         <div className="min-w-0 flex-1">
@@ -136,7 +138,7 @@ export function VerifyCard({ issueId, fixed, broken, viewer, eligible }: { issue
                 onChange={(e) => setNote(e.target.value.slice(0, 500))}
                 rows={2}
                 placeholder="What's still wrong?"
-                className="w-full rounded-xl border border-line-strong bg-surface px-3 py-2 text-sm outline-none focus:border-brand"
+                className="w-full rounded-xl bg-surface-2 px-3 py-2 text-sm outline-none transition-colors placeholder:text-ink-muted focus:bg-surface focus:ring-2 focus:ring-brand"
               />
               <div className="flex gap-2">
                 <Button size="sm" variant="danger" disabled={pending || note.trim().length < 5} onClick={() => send(false)}>
@@ -190,6 +192,7 @@ export function CommentComposer({ issueId, canOfficial, departmentName, closed }
             start(async () => {
               const r = await addComment({ issueId, body, anonymous, official });
               if (!r.ok) return void toast.error(r.error);
+              if (r.pending) toast.success("Sent for approval. It shows here once a moderator approves it.");
               setBody("");
               router.refresh();
             })
@@ -254,7 +257,7 @@ export function ManagePanel({
       </div>
       <div className="space-y-5 p-4">
         <div>
-          <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-ink-muted">Update status</div>
+          <div className="mb-2 text-xs font-semibold text-ink-muted">Update status</div>
           <div className="flex flex-wrap gap-1.5">
             {options.map((s) => (
               <button
@@ -262,7 +265,7 @@ export function ManagePanel({
                 onClick={() => setTo(to === s ? "" : s)}
                 className={cn(
                   "rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors",
-                  to === s ? "border-brand bg-brand text-brand-ink" : "border-line-strong hover:border-brand",
+                  to === s ? "border-transparent bg-ink text-bg" : "border-transparent bg-surface-2 hover:bg-surface-3",
                 )}
               >
                 {s === "in_progress" && (status === "resolved" || status === "closed") ? "Reopen" : STATUS_META[s].label}
@@ -282,7 +285,7 @@ export function ManagePanel({
                       ? "Public reason it won't be fixed (required)"
                       : "Optional public note"
                 }
-                className="w-full rounded-xl border border-line-strong bg-surface px-3 py-2 text-sm outline-none focus:border-brand"
+                className="w-full rounded-xl bg-surface-2 px-3 py-2 text-sm outline-none transition-colors placeholder:text-ink-muted focus:bg-surface focus:ring-2 focus:ring-brand"
               />
               {to === "resolved" && (
                 <div className="flex flex-wrap items-center gap-2">
@@ -316,9 +319,9 @@ export function ManagePanel({
         </div>
 
         <div>
-          <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-ink-muted">Route to department</div>
+          <div className="mb-2 text-xs font-semibold text-ink-muted">Route to department</div>
           <div className="flex gap-2">
-            <select value={dept} onChange={(e) => setDept(e.target.value)} className="h-9 min-w-0 flex-1 rounded-lg border border-line-strong bg-surface px-2 text-sm">
+            <select value={dept} onChange={(e) => setDept(e.target.value)} className="h-9 min-w-0 flex-1 rounded-full bg-surface-2 px-2 text-sm">
               {departments.map((d) => (
                 <option key={d.id} value={d.id}>
                   {d.name}
@@ -345,14 +348,14 @@ export function ManagePanel({
 
         {status !== "duplicate" && (
           <div>
-            <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-ink-muted">Merge duplicate into</div>
+            <div className="mb-2 text-xs font-semibold text-ink-muted">Merge duplicate into</div>
             <div className="flex gap-2">
               <input
                 value={mergeNo}
                 onChange={(e) => setMergeNo(e.target.value.replace(/\D/g, ""))}
                 placeholder="Issue #"
                 inputMode="numeric"
-                className="h-9 min-w-0 flex-1 rounded-lg border border-line-strong bg-surface px-3 text-sm"
+                className="h-9 min-w-0 flex-1 rounded-full bg-surface-2 px-3 text-sm"
               />
               <Button
                 size="sm"
@@ -381,7 +384,7 @@ export function ManagePanel({
                 value={hideReason}
                 onChange={(e) => setHideReason(e.target.value.slice(0, 300))}
                 placeholder="Reason (shown to the reporter)"
-                className="h-9 w-full rounded-lg border border-line-strong bg-surface px-3 text-sm"
+                className="h-9 w-full rounded-full bg-surface-2 px-3 text-sm"
               />
             )}
             <Button

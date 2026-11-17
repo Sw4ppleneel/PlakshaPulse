@@ -2,6 +2,7 @@ import "server-only";
 import { desc, ilike, or, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { departments, user } from "@/db/schema";
+import { STAGE_META } from "@/lib/constants";
 import type { Viewer } from "./dal";
 
 export type QueueItem = {
@@ -77,4 +78,170 @@ export async function searchPeople(q: string) {
     .limit(60);
   const depts = await db.select({ id: departments.id, name: departments.name }).from(departments);
   return { rows, depts };
+}
+
+export type ReviewItem = {
+  kind: "issue" | "proposal" | "comment" | "post" | "reason";
+  id: string;
+  href: string;
+  /** What it is attached to, e.g. "#12 Wi-Fi drops…" for a comment. Null for a new issue or proposal. */
+  context: string | null;
+  title: string | null;
+  text: string;
+  author: string | null;
+  photos: number;
+  createdAt: string;
+};
+
+/**
+ * Everything waiting for a moderator, oldest first. Names of people who posted anonymously are
+ * only included for admins; moderators see the content, not who wrote it.
+ */
+export async function getReviewQueue(viewer: Viewer): Promise<ReviewItem[]> {
+  const named = viewer.role === "admin";
+  const r = await db.execute<{ kind: ReviewItem["kind"]; id: string; num: number; ctx: string | null; title: string | null; text: string; author: string; anon: boolean; photos: number; at: Date }>(sql`
+    select * from (
+      select 'issue' as kind, i.id::text as id, i.number as num, null::text as ctx, i.title, i.body as text, u.name as author, i.anonymous as anon,
+             (select count(*) from attachments a where a.issue_id = i.id)::int as photos, i.created_at as at
+      from issues i join "user" u on u.id = i.reporter_id where i.approval = 'pending'
+      union all
+      select 'proposal', p.id::text, p.number, null, p.title, p.ask || case when p.body <> '' then E'\n\n' || p.body else '' end, u.name, false,
+             (select count(*) from attachments a where a.proposal_id = p.id)::int, p.created_at
+      from proposals p join "user" u on u.id = p.author_id where p.approval = 'pending'
+      union all
+      select 'comment', c.id::text, i.number, '#' || i.number || ' ' || i.title, null, c.body, u.name, c.anonymous, 0, c.created_at
+      from comments c join issues i on i.id = c.issue_id join "user" u on u.id = c.author_id where c.approval = 'pending'
+      union all
+      select 'post', x.id::text, p.number, 'P-' || p.number || ' ' || p.title, null, coalesce(x.body, ''), u.name, false, 0, x.created_at
+      from proposal_posts x join proposals p on p.id = x.proposal_id join "user" u on u.id = x.author_id where x.approval = 'pending'
+      union all
+      select 'reason', s.proposal_id::text || ':' || s.user_id, p.number, 'P-' || p.number || ' ' || p.title, null, coalesce(s.reason, ''), u.name, not s.show_name, 0, s.created_at
+      from proposal_supports s join proposals p on p.id = s.proposal_id join "user" u on u.id = s.user_id where s.reason_approval = 'pending'
+    ) q order by at limit 100`);
+  return r.rows.map((x) => ({
+    kind: x.kind,
+    id: x.id,
+    href: x.kind === "issue" || x.kind === "comment" ? `/issues/${x.num}` : `/proposals/${x.num}`,
+    context: x.ctx,
+    title: x.title,
+    text: x.text,
+    author: x.anon && !named ? null : x.author,
+    photos: x.photos,
+    createdAt: new Date(x.at).toISOString(),
+  }));
+}
+
+/** How many posts are waiting for a moderator; shown on the nav for moderators. */
+export async function getReviewCount() {
+  const r = await db.execute<{ n: number }>(sql`
+    select (select count(*) from issues where approval = 'pending')
+         + (select count(*) from proposals where approval = 'pending')
+         + (select count(*) from comments where approval = 'pending')
+         + (select count(*) from proposal_posts where approval = 'pending')
+         + (select count(*) from proposal_supports where reason_approval = 'pending') as n`);
+  return Number(r.rows[0]?.n ?? 0);
+}
+
+export type HiddenItem = {
+  kind: "issue" | "proposal" | "comment";
+  id: string;
+  href: string;
+  title: string;
+  context: string | null;
+  author: string;
+  /** "rejected" when a moderator turned it down from the queue; "hidden" when it was taken down after going public. */
+  state: "rejected" | "hidden";
+  reason: string | null;
+  at: string;
+};
+
+/**
+ * Everything that has been hidden or rejected, newest first, so a moderator can find it again and
+ * restore it. Pending items are not here; they are in the approval queue.
+ */
+export async function getHiddenContent(): Promise<HiddenItem[]> {
+  const r = await db.execute<{ kind: HiddenItem["kind"]; id: string; num: number; title: string; ctx: string | null; author: string; approval: string; reason: string | null; at: Date }>(sql`
+    select * from (
+      select 'issue' as kind, i.id::text as id, i.number as num, i.title, null::text as ctx, u.name as author, i.approval::text as approval, i.hidden_reason as reason, i.updated_at as at
+      from issues i join "user" u on u.id = i.reporter_id where i.hidden and i.approval <> 'pending'
+      union all
+      select 'proposal', p.id::text, p.number, p.title, null, u.name, p.approval::text, p.hidden_reason, p.updated_at
+      from proposals p join "user" u on u.id = p.author_id where p.hidden and p.approval <> 'pending'
+      union all
+      select 'comment', c.id::text, i.number, c.body, '#' || i.number || ' ' || i.title, u.name, c.approval::text, null, c.created_at
+      from comments c join issues i on i.id = c.issue_id join "user" u on u.id = c.author_id where c.hidden and c.approval <> 'pending'
+    ) q order by at desc limit 100`);
+  return r.rows.map((x) => ({
+    kind: x.kind,
+    id: x.id,
+    href: x.kind === "proposal" ? `/proposals/${x.num}` : `/issues/${x.num}`,
+    title: x.title,
+    context: x.ctx,
+    author: x.author,
+    state: x.approval === "rejected" ? "rejected" : "hidden",
+    reason: x.reason,
+    at: new Date(x.at).toISOString(),
+  }));
+}
+
+export type LogEntry = { id: string; actor: string; text: string; href: string | null; note: string | null; at: string };
+
+const ACTION_TEXT: Record<string, string> = {
+  hide: "hid",
+  restore: "restored",
+  approve: "approved",
+  reject: "rejected",
+  dismiss_flags: "dismissed the flags on",
+  "proposal.hide": "hid",
+  "proposal.restore": "restored",
+  "proposal_post.hide": "hid a post on",
+  "proposal_post.restore": "restored a post on",
+  set_role: "changed the role of",
+  ban: "suspended",
+  unban: "lifted the suspension of",
+};
+
+/**
+ * The moderation log: who hid, restored, approved, rejected or changed what, newest first. It reads
+ * the private audit log, which every moderator and admin action writes to. Moderators see content
+ * decisions; role changes and suspensions are listed for admins only.
+ */
+export async function getModerationLog(viewer: Viewer, limit = 60): Promise<LogEntry[]> {
+  const adminOnly = viewer.role === "admin" ? sql`true` : sql`a.target_type <> 'user'`;
+  const r = await db.execute<{ id: string; actor: string | null; action: string; target_type: string; detail: string | null; at: Date; num: number | null; label: string | null; is_proposal: boolean }>(sql`
+    select a.id, au.name as actor, a.action, a.target_type, a.detail, a.created_at as at,
+      coalesce(i.number, ci.number, p.number, xp.number, rp.number) as num,
+      coalesce(i.title, 'a comment on #' || ci.number || ' ' || ci.title, p.title, xp.title, 'a supporter''s reason on P-' || rp.number, tu.name) as label,
+      (p.id is not null or xp.id is not null or rp.id is not null) as is_proposal
+    from audit_log a
+    left join "user" au on au.id = a.actor_id
+    left join issues i on a.target_type = 'issue' and i.id::text = a.target_id
+    left join comments c on a.target_type = 'comment' and c.id::text = a.target_id
+    left join issues ci on ci.id = c.issue_id
+    left join proposals p on a.target_type = 'proposal' and p.id::text = a.target_id
+    left join proposal_posts x on a.target_type in ('proposal_post', 'post') and x.id::text = a.target_id
+    left join proposals xp on xp.id = x.proposal_id
+    left join proposals rp on a.target_type = 'reason' and rp.id::text = split_part(a.target_id, ':', 1)
+    left join "user" tu on a.target_type = 'user' and tu.id = a.target_id
+    where (a.action in (${sql.join(
+      Object.keys(ACTION_TEXT).map((k) => sql`${k}`),
+      sql`, `,
+    )}) or a.action like 'proposal.%')
+      and ${adminOnly}
+    order by a.created_at desc
+    limit ${limit}`);
+  return r.rows.map((x) => {
+    const what = x.label ? (x.target_type === "issue" ? `#${x.num} ${x.label}` : x.target_type === "proposal" ? `P-${x.num} ${x.label}` : x.label) : "something that has since been deleted";
+    const stage = x.action.startsWith("proposal.") && !ACTION_TEXT[x.action] ? (STAGE_META as Record<string, { label: string }>)[x.action.slice(9)]?.label : undefined;
+    const text = stage ? `moved ${what} to ${stage}` : `${ACTION_TEXT[x.action] ?? x.action} ${what}`;
+    const note = x.action === "set_role" ? `now ${x.detail?.split(":")[0] ?? ""}` : x.detail;
+    return {
+      id: x.id,
+      actor: x.actor ?? "Someone",
+      text,
+      href: x.num == null ? null : x.is_proposal ? `/proposals/${x.num}` : `/issues/${x.num}`,
+      note: note || null,
+      at: new Date(x.at).toISOString(),
+    };
+  });
 }

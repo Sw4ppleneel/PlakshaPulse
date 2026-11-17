@@ -46,19 +46,19 @@ export function CategoryIcon({ icon, color, size = 16, boxed = false }: { icon: 
 }
 
 const STATUS_STYLE: Record<Status, string> = {
-  open: "bg-surface-2 text-ink-2 ring-line-strong",
-  acknowledged: "bg-[color-mix(in_srgb,var(--aqua)_12%,transparent)] text-[var(--aqua)] ring-[color-mix(in_srgb,var(--aqua)_30%,transparent)]",
-  in_progress: "bg-brand-soft text-brand ring-[color-mix(in_srgb,var(--brand)_30%,transparent)]",
-  resolved: "bg-accent-soft text-accent-ink ring-[color-mix(in_srgb,var(--accent)_45%,transparent)]",
-  closed: "bg-ok-soft text-ok ring-[color-mix(in_srgb,var(--ok)_30%,transparent)]",
-  wont_fix: "bg-surface-2 text-ink-muted ring-line",
-  duplicate: "bg-surface-2 text-ink-muted ring-line",
+  open: "bg-surface-2 text-ink-2",
+  acknowledged: "bg-[color-mix(in_srgb,var(--aqua)_14%,transparent)] text-aqua",
+  in_progress: "bg-brand-soft text-brand",
+  resolved: "bg-accent-soft text-accent-ink",
+  closed: "bg-ok-soft text-ok",
+  wont_fix: "bg-surface-2 text-ink-muted",
+  duplicate: "bg-surface-2 text-ink-muted",
 };
 
 const STATUS_DOT: Record<Status, string> = {
   open: "border border-dashed border-ink-muted",
   acknowledged: "bg-aqua",
-  in_progress: "bg-brand animate-pulse",
+  in_progress: "bg-mint animate-pulse",
   resolved: "bg-accent",
   closed: "bg-ok",
   wont_fix: "bg-ink-muted",
@@ -70,7 +70,7 @@ export function StatusPill({ status, short = false, className }: { status: Statu
     <span
       title={STATUS_META[status].hint}
       className={cn(
-        "inline-flex items-center gap-1.5 whitespace-nowrap rounded-full px-2.5 py-0.5 text-xs font-semibold ring-1 ring-inset",
+        "inline-flex h-6 items-center gap-1.5 whitespace-nowrap rounded-full px-2.5 text-xs font-medium",
         STATUS_STYLE[status],
         className,
       )}
@@ -87,7 +87,7 @@ export function SlaChip({ dueAt, status }: { dueAt: string; status: Status }) {
   return (
     <span
       className={cn(
-        "inline-flex items-center gap-1 whitespace-nowrap rounded-full px-2 py-0.5 text-[11px] font-semibold tabular",
+        "inline-flex h-6 items-center gap-1 whitespace-nowrap rounded-full px-2.5 text-xs font-medium tabular",
         s.tone === "danger" && "bg-danger-soft text-danger",
         s.tone === "warn" && "bg-warn-soft text-warn",
         s.tone === "muted" && "bg-surface-2 text-ink-muted",
@@ -107,8 +107,8 @@ export function Avatar({ name, image, size = 28, className }: { name: string; im
   return (
     <span
       aria-hidden
-      className={cn("inline-flex shrink-0 items-center justify-center rounded-full font-semibold text-white", className)}
-      style={{ width: size, height: size, fontSize: size * 0.38, background: `hsl(${hue} 42% 42%)` }}
+      className={cn("inline-flex shrink-0 items-center justify-center rounded-full font-semibold", className)}
+      style={{ width: size, height: size, fontSize: size * 0.38, background: `hsl(${hue} 46% 86%)`, color: `hsl(${hue} 42% 24%)` }}
     >
       {initials(name)}
     </span>
@@ -126,15 +126,16 @@ export function Button({
 
 export function buttonClass(variant: "primary" | "secondary" | "ghost" | "danger" | "accent" = "primary", size: "sm" | "md" | "lg" = "md", className?: string) {
   return cn(
-    "inline-flex select-none items-center justify-center gap-2 rounded-full font-semibold transition-[background,color,box-shadow,transform] duration-150 active:scale-[0.98] disabled:pointer-events-none disabled:opacity-50",
-    size === "sm" && "h-8 px-3 text-[13px]",
-    size === "md" && "h-10 px-4 text-sm",
-    size === "lg" && "h-12 px-6 text-[15px]",
-    variant === "primary" && "bg-brand text-brand-ink shadow-[0_1px_0_rgb(255_255_255/.2)_inset,0_6px_16px_-6px_color-mix(in_srgb,var(--brand)_70%,transparent)] hover:bg-brand-strong",
-    variant === "accent" && "bg-accent text-[#3d2a00] hover:brightness-95",
-    variant === "secondary" && "bg-surface text-ink ring-1 ring-inset ring-line-strong hover:bg-surface-2",
+    "inline-flex select-none items-center justify-center gap-2 whitespace-nowrap rounded-full font-semibold transition-[background-color,color,filter,transform] duration-150 active:scale-[0.97] disabled:pointer-events-none disabled:opacity-45",
+    size === "sm" && "h-9 px-3.5 text-[13px]",
+    size === "md" && "h-11 px-5 text-sm",
+    size === "lg" && "h-[52px] px-6 text-[15px]",
+    // One primary action per screen: the mint fill with the glow under it.
+    variant === "primary" && "bg-mint text-brand-ink shadow-glow hover:brightness-[1.04]",
+    variant === "accent" && "bg-ink text-bg hover:opacity-90",
+    variant === "secondary" && "bg-surface-2 text-ink hover:bg-surface-3",
     variant === "ghost" && "text-ink-2 hover:bg-surface-2",
-    variant === "danger" && "bg-danger text-white hover:brightness-95",
+    variant === "danger" && "bg-danger-soft text-danger hover:brightness-95",
     className,
   );
 }
@@ -146,10 +147,10 @@ export function Card({ className, children }: { className?: string; children: Re
 export function Stat({ label, value, hint, tone }: { label: string; value: ReactNode; hint?: ReactNode; tone?: "brand" | "ok" | "warn" | "danger" }) {
   return (
     <div className="min-w-0">
-      <div className="text-[11px] font-semibold uppercase tracking-[0.08em] text-ink-muted">{label}</div>
+      <div className="label">{label}</div>
       <div
         className={cn(
-          "font-display mt-1 text-[28px] leading-none tabular sm:text-[32px]",
+          "mt-1 text-[28px] font-semibold leading-none tracking-tight tabular",
           tone === "brand" && "text-brand",
           tone === "ok" && "text-ok",
           tone === "warn" && "text-warn",
@@ -158,7 +159,7 @@ export function Stat({ label, value, hint, tone }: { label: string; value: React
       >
         {value}
       </div>
-      {hint && <div className="mt-1 text-xs text-ink-muted">{hint}</div>}
+      {hint && <div className="mt-1.5 text-xs text-ink-muted">{hint}</div>}
     </div>
   );
 }
@@ -166,28 +167,48 @@ export function Stat({ label, value, hint, tone }: { label: string; value: React
 export function EmptyState({ title, children, icon }: { title: string; children?: ReactNode; icon?: ReactNode }) {
   return (
     <div className="flex flex-col items-center justify-center gap-2 px-6 py-16 text-center">
-      {icon && <div className="mb-2 text-ink-muted">{icon}</div>}
-      <div className="font-display text-xl">{title}</div>
+      {icon && <div className="mb-2 inline-flex size-14 items-center justify-center rounded-full bg-surface-2 text-ink-muted">{icon}</div>}
+      <div className="text-lg font-semibold tracking-tight">{title}</div>
       {children && <div className="max-w-sm text-sm text-ink-muted">{children}</div>}
     </div>
   );
 }
 
-export function Logo({ size = 28, withWord = true }: { size?: number; withWord?: boolean }) {
+/** The mark: a dark rounded tile with the pulse line in mint. */
+export function LogoMark({ size = 40 }: { size?: number }) {
   return (
-    <span className="inline-flex items-center gap-2">
-      <svg width={size} height={size} viewBox="0 0 32 32" aria-hidden>
-        <circle cx="12" cy="18" r="9.5" fill="var(--brand)" />
-        <circle cx="22.5" cy="11" r="6" fill="var(--aqua)" opacity=".9" />
-        <circle cx="24.5" cy="23.5" r="3.6" fill="var(--accent)" />
-        <path d="M6.5 18h3l1.6-3.6 2.4 7.2 1.6-3.6h2.4" fill="none" stroke="#fff" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" />
+    <span className="inline-flex shrink-0 items-center justify-center bg-dark" style={{ width: size, height: size, borderRadius: size * 0.32 }} aria-hidden>
+      <svg width={size * 0.6} height={size * 0.6} viewBox="0 0 24 24" fill="none" stroke="var(--mint)" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round">
+        <path d="M2.5 12.5h4l2.2-6 4.2 12 2.6-6h6" />
       </svg>
+    </span>
+  );
+}
+
+export function Logo({ size = 40, withWord = true }: { size?: number; withWord?: boolean }) {
+  return (
+    <span className="inline-flex items-center gap-3">
+      <LogoMark size={size} />
       {withWord && (
-        <span className="leading-none">
-          <span className="font-display block text-[19px] font-semibold tracking-tight">Pulse</span>
-          <span className="block text-[9.5px] font-semibold uppercase tracking-[0.22em] text-ink-muted">Plaksha</span>
+        <span className="leading-tight">
+          <span className="block text-[17px] font-semibold tracking-tight">Pulse</span>
+          <span className="block text-[13px] text-ink-muted">Plaksha</span>
         </span>
       )}
     </span>
+  );
+}
+
+/** Standard page heading: a title, one quiet line under it, and at most one action. */
+export function PageHeader({ title, sub, action, back }: { title: ReactNode; sub?: ReactNode; action?: ReactNode; back?: ReactNode }) {
+  return (
+    <header className="flex flex-wrap items-end justify-between gap-x-6 gap-y-3">
+      <div className="min-w-0">
+        {back}
+        <h1 className="title">{title}</h1>
+        {sub && <p className="mt-1.5 max-w-xl text-[15px] text-ink-muted">{sub}</p>}
+      </div>
+      {action}
+    </header>
   );
 }

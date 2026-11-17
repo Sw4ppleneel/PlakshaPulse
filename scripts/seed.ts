@@ -11,7 +11,7 @@ import { drizzle } from "drizzle-orm/node-postgres";
 import { Pool } from "pg";
 import * as s from "../src/db/schema";
 
-const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+const pool = new Pool({ connectionString: process.env.DATABASE_URL_UNPOOLED || process.env.DATABASE_URL });
 const db = drizzle(pool, { schema: s });
 const DEMO = process.argv.includes("--demo");
 if (DEMO && process.env.NODE_ENV === "production") throw new Error("Refusing to seed demo data in production");
@@ -142,7 +142,7 @@ const ISSUES: Demo[] = [
 ];
 
 async function seedDemo() {
-  await db.execute(sql`truncate issues, notifications, flags, audit_log, session, account, verification restart identity cascade`);
+  await db.execute(sql`truncate issues, proposals, notifications, flags, audit_log, rate_hits, session, account, verification restart identity cascade`);
   await db.execute(sql`delete from "user"`);
 
   const mk = (id: string, name: string, email: string, role: s.Role = "member", departmentId: string | null = null) => ({
@@ -319,7 +319,133 @@ async function seedDemo() {
     [people[1], people[2], people[3]].map((p) => ({ targetType: "issue" as const, targetId: joke.id, issueId: joke.id, userId: p!.id, reason: "Spam or joke post" })),
   );
 
-  console.log(`✓ demo: ${people.length + staff.length + special.length} users, ${ISSUES.length + 2} issues`);
+
+  /* ── Proposals: one at each stage of the pipeline ── */
+  const COHORTS = ["Class of 2027", "Class of 2028", "Class of 2029", "Class of 2030", "Postgrad / PhD", "Faculty"];
+  const cohortOf = (i: number) => COHORTS[i % 10 < 4 ? 2 : i % 10 < 7 ? 1 : i % 10 < 9 ? 3 : i % 3 === 0 ? 4 : 0]!;
+  await db.execute(sql`update "user" set cohort = 'Class of 2029' where id = 'demo-student'`);
+  const REASONS = [
+    "I end up working in my room because there's nowhere open after nine.",
+    "Our project team lost two evenings last week to this.",
+    "Would use it three or four nights a week during build season.",
+    "Happy to supervise a slot if that's what it takes.",
+    "It's the one thing every senior told me they wished they'd had.",
+    "The current timing clashes with labs for most of second year.",
+    "Makes a real difference for those of us who don't go home on weekends.",
+    "Other campuses our size already do this.",
+  ];
+  const PROPOSALS: {
+    title: string; ask: string; body: string; area: string; dept: string | null; goal: number; stage: s.ProposalStage; supporters: number; ageD: number;
+    trialPlan?: string; trial?: [number, number]; decision?: string; steps?: { to: s.ProposalStage; daysAgo: number; note: string; official?: boolean }[];
+  }[] = [
+    {
+      title: "Keep the makerspace open till midnight",
+      ask: "Extend makerspace hours from 9 pm to midnight on weekdays, with a trained student supervisor on duty.",
+      body: "Most project work happens after dinner, and the makerspace closes just as teams are free. Three clubs have build deadlines this semester.\n\nWhat it needs: one student supervisor per night (volunteers below), and the existing access-card log.",
+      area: "academics", dept: "academics", goal: 100, stage: "trial", supporters: 84, ageD: 16,
+      trialPlan: "Two weeks, Monday to Friday, 9 pm to midnight. Student supervisor signs in and out. Check in here each night you use it.",
+      trial: [-5, 9],
+      steps: [
+        { to: "in_review", daysAgo: 9, note: "Met the Office of Academic Affairs with the evidence pack. They asked for a supervisor roster, which the volunteers have filled." },
+        { to: "trial", daysAgo: 5, note: "Approved for a two-week trial. We'll review the check-in numbers together at the end.", official: true },
+      ],
+    },
+    {
+      title: "A quiet study room that stays open all night",
+      ask: "Keep one room in the library building open 24 hours during exam weeks, with card access.",
+      body: "During end-sems the library closes at 11 and the residences are noisy. One card-access room would cover it.",
+      area: "spaces", dept: "academics", goal: 100, stage: "gathering", supporters: 63, ageD: 6,
+      trialPlan: "Run it for the two weeks of end-sem exams and count card swipes after 11 pm.",
+    },
+    {
+      title: "Late-night café counter till 1 am",
+      ask: "Keep one counter at the café open till 1 am on weekdays, with a short fixed menu.",
+      body: "There's nothing to eat on campus after 10:30. A short menu (chai, maggi, sandwiches) would be enough.",
+      area: "food", dept: "dining", goal: 200, stage: "in_review", supporters: 71, ageD: 11,
+      steps: [{ to: "in_review", daysAgo: 2, note: "Shared the evidence pack with the Mess Committee. They are checking vendor staffing and will reply next week." }],
+    },
+    {
+      title: "Monthly open-mic night at the amphitheatre",
+      ask: "Reserve the amphitheatre on the first Friday of every month for a student open mic.",
+      body: "Clubs currently book it ad hoc and approvals take a week each time. A standing booking removes the back-and-forth.",
+      area: "events", dept: "student-life", goal: 50, stage: "adopted", supporters: 58, ageD: 34,
+      trialPlan: "Two trial nights in consecutive months.", trial: [-27, -1],
+      decision: "Approved as a standing booking for the rest of the academic year. Sound cut-off stays at 10:30 pm.",
+      steps: [
+        { to: "in_review", daysAgo: 30, note: "Taken to the Student Life Office with 50 supporters." },
+        { to: "trial", daysAgo: 27, note: "Two trial nights approved.", official: true },
+        { to: "adopted", daysAgo: 3, note: "Approved as a standing booking for the rest of the academic year. Sound cut-off stays at 10:30 pm.", official: true },
+      ],
+    },
+    {
+      title: "Weekend shuttle to Chandigarh",
+      ask: "Run a university bus to Sector 17 and back on Saturdays, leaving at 11 am and returning at 8 pm.",
+      body: "Cabs cost about ₹900 each way. A weekly shuttle would fill.",
+      area: "mobility", dept: "transport", goal: 100, stage: "gathering", supporters: 29, ageD: 3,
+    },
+    {
+      title: "Shared cycles between the residences and academic block",
+      ask: "Place 20 shared cycles at the residences and the academic block, unlocked with the campus ID.",
+      body: "",
+      area: "mobility", dept: "transport", goal: 100, stage: "declined", supporters: 41, ageD: 40,
+      decision: "Not approved this year: the insurance and maintenance cost came in above the transport budget. The office has said it can be re-proposed with a sponsor.",
+      steps: [
+        { to: "in_review", daysAgo: 33, note: "Shared with the Transport Desk." },
+        { to: "declined", daysAgo: 20, note: "Not approved this year: the insurance and maintenance cost came in above the transport budget. The office has said it can be re-proposed with a sponsor.", official: true },
+      ],
+    },
+  ];
+  const dayStr = (offsetDays: number) => new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kolkata" }).format(new Date(Date.now() + offsetDays * 86_400_000));
+  for (const [pi, d] of PROPOSALS.entries()) {
+    const author = people[(pi * 13 + 5) % people.length]!;
+    const created = hoursAgo(d.ageD * 24);
+    const last = d.steps?.[d.steps.length - 1];
+    const [prop] = await db
+      .insert(s.proposals)
+      .values({
+        title: d.title, ask: d.ask, body: d.body, area: d.area, departmentId: d.dept, goal: d.goal, stage: d.stage, authorId: author.id,
+        supportCount: d.supporters, trialPlan: d.trialPlan ?? null,
+        trialStartsOn: d.trial ? dayStr(d.trial[0]) : null, trialEndsOn: d.trial ? dayStr(d.trial[1]) : null,
+        decisionNote: d.decision ?? null, createdAt: created, stageChangedAt: last ? hoursAgo(last.daysAgo * 24) : created,
+      })
+      .returning();
+    const others = people.filter((x) => x.id !== author.id).sort(() => rand() - 0.5).slice(0, d.supporters - 1);
+    const frozenAt = ["adopted", "declined"].includes(d.stage) && last ? last.daysAgo : 0;
+    await db.insert(s.proposalSupports).values(
+      [author, ...others].map((u, i) => {
+        // Front-loaded growth: a burst when it's shared, then a long tail.
+        const t = i === 0 ? 0 : Math.pow(rand(), 1.8);
+        const idx = Number(u.id.replace("demo-", "")) || 0;
+        return {
+          proposalId: prop.id, userId: u.id, cohort: cohortOf(idx),
+          usage: (i === 0 || rand() < 0.52 ? "often" : rand() < 0.7 ? "sometimes" : "backing") as s.Usage,
+          volunteer: i === 0 || rand() < 0.12, showName: rand() < 0.8,
+          reason: rand() < 0.22 ? REASONS[Math.floor(rand() * REASONS.length)]! : null,
+          createdAt: new Date(created.getTime() + t * (d.ageD - frozenAt) * 86_400_000),
+        };
+      }),
+    );
+    await db.insert(s.proposalPosts).values([
+      { proposalId: prop.id, authorId: author.id, kind: "created" as const, toStage: "gathering" as const, createdAt: created },
+      ...(d.steps ?? []).map((st, i, arr) => ({
+        proposalId: prop.id, authorId: st.official ? staffFor(d.dept ?? "student-life").id : author.id, kind: "stage" as const,
+        fromStage: (i ? arr[i - 1]!.to : "gathering") as s.ProposalStage, toStage: st.to, official: !!st.official, body: st.note, createdAt: hoursAgo(st.daysAgo * 24),
+      })),
+    ]);
+    if (d.trial) {
+      const rows = [];
+      for (let off = d.trial[0]; off <= Math.min(-1, d.trial[1]); off++) {
+        const n = 9 + Math.floor(rand() * 14);
+        for (const u of [author, ...others].sort(() => rand() - 0.5).slice(0, n)) {
+          const r = rand();
+          rows.push({ proposalId: prop.id, userId: u.id, day: dayStr(off), rating: r < 0.74 ? 3 : r < 0.93 ? 2 : 1 });
+        }
+      }
+      if (rows.length) await db.insert(s.trialCheckins).values(rows);
+    }
+  }
+
+  console.log(`✓ demo: ${people.length + staff.length + special.length} users, ${ISSUES.length + 2} issues, ${PROPOSALS.length} proposals`);
   console.log("  sign in as student.demo@ / faculty.demo@ / facilities.demo@ / admin.demo@plaksha.edu.in (code prints in the dev server console)");
 }
 

@@ -11,6 +11,8 @@ export async function launch(opts = {}) {
 }
 
 export async function signIn(context, email) {
+  // The sign-in page sets the per-browser id that code requests are limited by.
+  await context.request.get(`${BASE}/signin`);
   const before = readFileSync(".logs/dev.log", "utf8").length;
   const res = await context.request.post(`${BASE}/api/auth/email-otp/send-verification-otp`, {
     data: { email, type: "sign-in" },

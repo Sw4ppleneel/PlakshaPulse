@@ -202,7 +202,7 @@ export function BubbleField({
       const surface = css.getPropertyValue("--surface").trim() || "#fff";
       const ok = css.getPropertyValue("--ok").trim() || "#1f9d55";
       const sans = getComputedStyle(document.body).fontFamily || "system-ui, sans-serif";
-      const display = css.getPropertyValue("--font-fraunces").trim() || sans;
+      const display = css.getPropertyValue("--font-outfit").trim() || sans;
       const dark = document.documentElement.dataset.theme === "dark" || (!document.documentElement.dataset.theme && matchMedia("(prefers-color-scheme: dark)").matches);
       ctx.clearRect(0, 0, w, h);
 
@@ -471,7 +471,7 @@ export function BubbleField({
             top: Math.max(8, tip.y - 70),
           }}
         >
-          <div className="flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-wide text-ink-muted">
+          <div className="flex items-center gap-1.5 text-[13px] text-ink-muted">
             <span className="inline-block size-2 rounded-full" style={{ background: catMap.get(tip.node.issue.categoryId)?.color }} />
             {catMap.get(tip.node.issue.categoryId)?.name} · #{tip.node.issue.number}
           </div>

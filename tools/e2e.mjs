@@ -1,6 +1,6 @@
 // End-to-end walk through the core loop with four real accounts (dev server + demo seed required):
 //   node tools/e2e.mjs
-// student files (sees duplicate suggestion) → faculty me-too → IT staff acknowledge + resolve
+// student files (sees duplicate suggestion) → admin approves → faculty me-too → IT staff acknowledge + resolve
 // → student says "still broken" → reopened. Also checks role gates.
 import assert from "node:assert/strict";
 import { BASE, contextFor, launch } from "./session.mjs";
@@ -35,9 +35,26 @@ const adminRes = await page.goto(`${BASE}/admin`);
 assert.equal(adminRes.status(), 404, "member blocked from /admin");
 step("member gets 404 on /admin");
 
-/* faculty me-too */
+/* it is private until a moderator approves it */
+await page.goto(`${BASE}/issues/${number}`);
+await page.getByText("Waiting for a moderator.").waitFor();
 const faculty = await contextFor(browser, "faculty.demo@plaksha.edu.in", opts);
 const fp = await faculty.newPage();
+const hiddenRes = await fp.goto(`${BASE}/issues/${number}`);
+assert.equal(hiddenRes.status(), 404, "another member can't open a pending issue");
+await fp.goto(`${BASE}/board?mode=list&q=${encodeURIComponent(title)}`);
+assert.equal(await fp.getByText(title).count(), 0, "pending issue is not on the board");
+step("pending issue is invisible to other members");
+
+const adminCtx = await contextFor(browser, "admin.demo@plaksha.edu.in", opts);
+const ap = await adminCtx.newPage();
+await ap.goto(`${BASE}/admin`);
+await ap.getByRole("link", { name: title }).waitFor();
+await ap.locator("li", { hasText: title }).getByRole("button", { name: "Approve" }).click();
+await ap.getByText("Approved. It's public now.").waitFor();
+step("admin approved it from the queue");
+
+/* faculty me-too */
 await fp.goto(`${BASE}/issues/${number}`);
 await fp.getByRole("button", { name: /Affected too/ }).click();
 await fp.getByText("You're affected — following").waitFor();
@@ -76,7 +93,7 @@ await page.getByText("reopened this — still not fixed").waitFor();
 step("reporter said still broken → issue reopened");
 
 /* notifications reached the student */
-const unread = await page.getByRole("button", { name: /Notifications, \d+ unread/ }).count();
+const unread = await page.getByRole("button", { name: /Updates, \d+ unread/ }).count();
 assert.ok(unread > 0, "student has unread notifications");
 step("reporter received notifications");
 

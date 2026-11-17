@@ -37,6 +37,8 @@ export const env = {
         }
       : null,
   smtpUrl: process.env.SMTP_URL || null,
+  /** Gmail allows about 500 recipients a day; stop a little short so the last people get a clear message. */
+  mailDailyCap: Number(process.env.MAIL_DAILY_CAP) || 450,
   mailFrom: process.env.MAIL_FROM || "Plaksha Pulse <no-reply@plaksha.edu.in>",
 };
 

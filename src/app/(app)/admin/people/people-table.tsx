@@ -7,7 +7,7 @@ import { toast } from "sonner";
 import { Avatar, Button } from "@/components/ui";
 import { setBanned, setUserRole } from "@/server/actions/manage";
 
-type Row = { id: string; name: string; email: string; role: "member" | "staff" | "admin"; banned: boolean; departmentId: string | null; createdAt: string };
+type Row = { id: string; name: string; email: string; role: "member" | "staff" | "mod" | "admin"; banned: boolean; departmentId: string | null; createdAt: string };
 
 export function PeopleTable({ q, rows, depts, selfId }: { q: string; rows: Row[]; depts: { id: string; name: string }[]; selfId: string }) {
   const router = useRouter();
@@ -37,7 +37,7 @@ export function PeopleTable({ q, rows, depts, selfId }: { q: string; rows: Row[]
           value={term}
           onChange={(e) => setTerm(e.target.value)}
           placeholder="Search by name or email (empty = staff, admins, suspended)"
-          className="h-11 w-full rounded-full border border-line-strong bg-surface pl-10 pr-4 text-sm outline-none focus:border-brand"
+          className="h-11 w-full rounded-full bg-surface-2 pl-10 pr-4 text-sm outline-none transition-colors placeholder:text-ink-muted focus:bg-surface focus:ring-2 focus:ring-brand"
         />
       </form>
       <div className="card divide-y divide-line overflow-hidden">
@@ -47,7 +47,7 @@ export function PeopleTable({ q, rows, depts, selfId }: { q: string; rows: Row[]
             <Avatar name={r.name} size={34} />
             <div className="min-w-0 flex-1">
               <div className="truncate font-medium">
-                {r.name} {r.banned && <span className="ml-1 rounded bg-danger-soft px-1.5 py-0.5 text-[10px] font-bold uppercase text-danger">suspended</span>}
+                {r.name} {r.banned && <span className="ml-1 rounded bg-danger-soft px-2 py-0.5 text-[11px] font-medium text-danger">Suspended</span>}
               </div>
               <div className="truncate text-xs text-ink-muted">{r.email}</div>
             </div>
@@ -56,10 +56,10 @@ export function PeopleTable({ q, rows, depts, selfId }: { q: string; rows: Row[]
               value={r.role === "staff" ? `staff:${r.departmentId}` : r.role}
               onChange={(e) => {
                 const v = e.target.value;
-                const [role, dept] = v.split(":") as ["member" | "staff" | "admin", string | undefined];
-                act(() => setUserRole({ userId: r.id, role, departmentId: dept ?? null }), `${r.name} is now ${role === "staff" ? `staff (${depts.find((d) => d.id === dept)?.name})` : role}.`);
+                const [role, dept] = v.split(":") as ["member" | "staff" | "mod" | "admin", string | undefined];
+                act(() => setUserRole({ userId: r.id, role, departmentId: dept ?? null }), `${r.name} is now ${role === "staff" ? `staff (${depts.find((d) => d.id === dept)?.name})` : role === "mod" ? "a moderator" : role}.`);
               }}
-              className="h-9 rounded-lg border border-line-strong bg-surface px-2 text-sm"
+              className="h-9 rounded-full bg-surface-2 px-2 text-sm"
               aria-label={`Role for ${r.name}`}
             >
               <option value="member">Member</option>
@@ -70,6 +70,7 @@ export function PeopleTable({ q, rows, depts, selfId }: { q: string; rows: Row[]
                   </option>
                 ))}
               </optgroup>
+              <option value="mod">Moderator</option>
               <option value="admin">Admin</option>
             </select>
             {r.role !== "admin" && (

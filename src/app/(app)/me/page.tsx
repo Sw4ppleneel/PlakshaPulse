@@ -23,12 +23,12 @@ export default async function MePage({ searchParams }: { searchParams: Promise<{
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="font-display text-[34px] leading-tight tracking-tight">Hi, {viewer.name.split(" ")[0]}</h1>
+        <h1 className="title">Hi, {viewer.name.split(" ")[0]}</h1>
         <p className="mt-1 text-[15px] text-ink-muted">
           You&apos;ve reported <b className="text-ink">{reported.length}</b> and follow <b className="text-ink">{watching.length}</b> issues.
         </p>
       </div>
-      <div className="inline-flex rounded-full border border-line-strong bg-surface p-1">
+      <div className="inline-flex rounded-full bg-surface p-1 shadow-card">
         {(
           [
             ["reported", "Reported"],
@@ -45,8 +45,8 @@ export default async function MePage({ searchParams }: { searchParams: Promise<{
         <div className="card divide-y divide-line overflow-hidden">
           {notes.length === 0 && <EmptyState title="No updates yet" />}
           {notes.map((n) => (
-            <Link key={n.id} href={n.issueNumber ? `/issues/${n.issueNumber}` : "/me"} className={cn("flex gap-3 px-5 py-3.5 hover:bg-surface-2", !n.readAt && "bg-brand-soft/50")}>
-              <span className={cn("mt-2 size-2 shrink-0 rounded-full", n.readAt ? "bg-line-strong" : "bg-brand")} />
+            <Link key={n.id} href={n.proposalNumber ? `/proposals/${n.proposalNumber}` : n.issueNumber ? `/issues/${n.issueNumber}` : "/me"} className={cn("flex gap-3 px-5 py-3.5 hover:bg-surface-2", !n.readAt && "bg-brand-soft/50")}>
+              <span className={cn("mt-2 size-2 shrink-0 rounded-full", n.readAt ? "bg-line-strong" : "bg-mint")} />
               <span>
                 <span className="block text-sm">{n.message}</span>
                 <span className="text-xs text-ink-muted" suppressHydrationWarning>

@@ -6,6 +6,7 @@ import { NextResponse, type NextRequest } from "next/server";
  * on every page, action and route handler — never rely on this file for security.
  */
 const PUBLIC = ["/", "/signin", "/about"];
+const DEVICE_COOKIE = "pulse_device";
 
 export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
@@ -42,6 +43,10 @@ export function proxy(request: NextRequest) {
   requestHeaders.set("Content-Security-Policy", csp);
   const res = NextResponse.next({ request: { headers: requestHeaders } });
   res.headers.set("Content-Security-Policy", csp);
+  // A random per-browser id, used only to rate-limit sign-in code requests (see lib/auth.ts).
+  if (pathname === "/signin" && !request.cookies.has(DEVICE_COOKIE)) {
+    res.cookies.set(DEVICE_COOKIE, crypto.randomUUID(), { httpOnly: true, sameSite: "lax", secure: !isDev, path: "/", maxAge: 60 * 60 * 24 * 365 });
+  }
   return res;
 }
 

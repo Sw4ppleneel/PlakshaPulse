@@ -62,8 +62,8 @@ function MetooInner({
         disabled={disabled}
         aria-pressed={optimistic.voted}
         className={cn(
-          "group flex w-full items-center gap-4 rounded-2xl border p-4 text-left transition-all",
-          optimistic.voted ? "border-brand bg-brand-soft" : "border-line-strong bg-surface hover:border-brand hover:bg-brand-soft/50",
+          "group flex w-full items-center gap-4 rounded-3xl p-5 text-left transition-colors duration-200 active:scale-[0.98]",
+          optimistic.voted ? "on-dark" : "card hover:bg-surface-2",
           disabled && "opacity-60",
         )}
       >
@@ -71,13 +71,13 @@ function MetooInner({
           key={bump}
           className={cn(
             "inline-flex size-12 shrink-0 items-center justify-center rounded-full transition-colors",
-            optimistic.voted ? "bg-brand text-brand-ink animate-pop" : "bg-surface-2 text-ink-2 group-hover:bg-brand group-hover:text-brand-ink",
+            optimistic.voted ? "bg-mint text-brand-ink animate-pop" : "bg-surface-2 text-ink-2 group-hover:bg-mint group-hover:text-brand-ink",
           )}
         >
           <Hand size={22} />
         </span>
         <span className="min-w-0">
-          <span className="font-display block text-3xl leading-none tabular">{optimistic.count}</span>
+          <span className="block text-[32px] font-semibold leading-none tracking-tight tabular">{optimistic.count}</span>
           <span className="mt-1 block text-sm text-ink-muted">
             {optimistic.voted ? (isReporter ? "You reported this" : "You're affected — following") : disabled ? "people were affected" : "Affected too? Add yourself"}
           </span>
@@ -92,9 +92,9 @@ function MetooInner({
       aria-pressed={optimistic.voted}
       aria-label={`${optimistic.voted ? "Remove me too" : "Me too"} (${optimistic.count})`}
       className={cn(
-        "flex shrink-0 flex-col items-center justify-center rounded-xl border tabular transition-all",
+        "flex shrink-0 flex-col items-center justify-center rounded-2xl tabular transition-colors duration-200 active:scale-95",
         size === "sm" ? "h-12 w-12" : "h-14 w-14",
-        optimistic.voted ? "border-brand bg-brand-soft text-brand" : "border-line-strong bg-surface text-ink-2 hover:border-brand hover:text-brand",
+        optimistic.voted ? "bg-mint text-brand-ink" : "bg-surface-2 text-ink-2 hover:bg-surface-3",
         disabled && "opacity-60",
       )}
     >

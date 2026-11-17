@@ -10,7 +10,7 @@ export default async function NewIssuePage() {
   return (
     <div className="space-y-6">
       <div className="animate-rise">
-        <h1 className="font-display text-[34px] leading-tight tracking-tight sm:text-[40px]">Report an issue</h1>
+        <h1 className="title">Report an issue</h1>
         <p className="mt-1 text-[15px] text-ink-muted">Takes 30 seconds. If someone already reported it, we&apos;ll point you to it so your voice adds up.</p>
       </div>
       <ReportForm

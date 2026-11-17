@@ -12,11 +12,12 @@ import {
   issueWatchers,
   locations,
   notifications,
+  proposals,
   user,
   verifications,
 } from "@/db/schema";
 import { ACTIVE_STATUSES, HEAT_HALF_LIFE_HOURS, type Status } from "@/lib/constants";
-import { canManage, type Viewer } from "./dal";
+import { canManage, isMod, type Viewer } from "./dal";
 
 /* ───────────────────────── Taxonomy ───────────────────────── */
 
@@ -49,6 +50,7 @@ export type BoardIssue = {
   dueAt: string;
   viewerVoted: boolean;
   photoId: string | null;
+  approval: "pending" | "approved" | "rejected";
 };
 
 export type BoardFilter = {
@@ -68,7 +70,8 @@ export async function listIssues(viewer: Viewer, f: BoardFilter = {}): Promise<B
     f.view === "fixed" ? ["resolved", "closed"] : f.view === "all" ? ["open", "acknowledged", "in_progress", "resolved", "closed", "wont_fix"] : ACTIVE_STATUSES;
 
   const where = [
-    sql`i.hidden = false`,
+    // Your own list includes what is still waiting for a moderator; nobody else's ever does.
+    f.mine === "reported" ? sql`(i.hidden = false or i.approval <> 'approved')` : sql`i.hidden = false`,
     sql`i.status::text in (${sql.join(
       statuses.map((s) => sql`${s}`),
       sql`, `,
@@ -109,8 +112,9 @@ export async function listIssues(viewer: Viewer, f: BoardFilter = {}): Promise<B
     due_at: Date;
     viewer_voted: boolean;
     photo_id: string | null;
+    approval: "pending" | "approved" | "rejected";
   }>(sql`
-    select i.id, i.number, i.title, i.status, i.category_id, i.location_id, i.severity,
+    select i.id, i.number, i.title, i.status, i.category_id, i.location_id, i.severity, i.approval,
            i.metoo_count, i.comment_count, i.created_at, i.updated_at, i.resolved_at, i.due_at,
            coalesce(h.heat, 0) * case i.severity when 'high' then 1.6 when 'medium' then 1.25 else 1 end as heat,
            exists (select 1 from issue_votes mv where mv.issue_id = i.id and mv.user_id = ${viewer.id}) as viewer_voted,
@@ -142,6 +146,7 @@ export async function listIssues(viewer: Viewer, f: BoardFilter = {}): Promise<B
     dueAt: new Date(r.due_at).toISOString(),
     viewerVoted: r.viewer_voted,
     photoId: r.photo_id,
+    approval: r.approval,
   }));
 }
 
@@ -287,6 +292,7 @@ export type TimelineItem =
       departmentName: string | null;
       mine: boolean;
       hidden: boolean;
+      approval: "pending" | "approved" | "rejected";
       createdAt: string;
       // only filled for admins
       realAuthor?: string;
@@ -315,8 +321,9 @@ export async function getIssueDetail(viewer: Viewer, number: number) {
   const i = row.issue;
   const manage = canManage(viewer, i.departmentId);
   const isAdmin = viewer.role === "admin";
+  const mod = isMod(viewer);
   const viewerIsReporter = i.reporterId === viewer.id;
-  if (i.hidden && !manage && !viewerIsReporter) return null;
+  if (i.hidden && !manage && !mod && !viewerIsReporter) return null;
 
   const [events, commentRows, photos, voted, watching, verifs, mergedChildren, parent] = await Promise.all([
     db
@@ -382,7 +389,7 @@ export async function getIssueDetail(viewer: Viewer, number: number) {
       createdAt: e.createdAt.toISOString(),
     })),
     ...commentRows
-      .filter(({ c }) => !c.hidden || manage || c.authorId === viewer.id)
+      .filter(({ c }) => !c.hidden || manage || mod || c.authorId === viewer.id)
       .map(({ c, name, image, deptId }): TimelineItem => ({
         kind: "comment",
         id: c.id,
@@ -393,6 +400,7 @@ export async function getIssueDetail(viewer: Viewer, number: number) {
         departmentName: c.official ? (deptNames.get(deptId ?? "") ?? "Campus admin") : null,
         mine: c.authorId === viewer.id,
         hidden: c.hidden,
+        approval: c.approval,
         createdAt: c.createdAt.toISOString(),
         realAuthor: isAdmin && (c.anonymous || c.official) ? name : undefined,
       })),
@@ -415,7 +423,9 @@ export async function getIssueDetail(viewer: Viewer, number: number) {
     resolutionNote: i.resolutionNote,
     wontFixReason: i.wontFixReason,
     hidden: i.hidden,
-    hiddenReason: manage ? i.hiddenReason : null,
+    hiddenReason: manage || mod || viewerIsReporter ? i.hiddenReason : null,
+    approval: i.approval,
+    viewerIsMod: mod,
     locationDetail: i.locationDetail,
     createdAt: i.createdAt.toISOString(),
     updatedAt: i.updatedAt.toISOString(),
@@ -568,9 +578,11 @@ export async function getNotifications(viewer: Viewer, limit = 30) {
       createdAt: notifications.createdAt,
       issueNumber: issues.number,
       issueTitle: issues.title,
+      proposalNumber: proposals.number,
     })
     .from(notifications)
     .leftJoin(issues, eq(issues.id, notifications.issueId))
+    .leftJoin(proposals, eq(proposals.id, notifications.proposalId))
     .where(eq(notifications.userId, viewer.id))
     .orderBy(desc(notifications.createdAt))
     .limit(limit);

@@ -16,7 +16,7 @@ import {
   user,
 } from "@/db/schema";
 import { ACTIVE_STATUSES, MAX_PHOTOS, STATUS_META, STATUSES, TRANSITIONS, type Status } from "@/lib/constants";
-import { AuthError, canManage, requireAdmin, requireViewer } from "../dal";
+import { AuthError, canManage, requireAdmin, requireMod, requireViewer } from "../dal";
 import { processImage } from "../images";
 import { notifyWatchers } from "../notify";
 import { limit } from "../rate-limit";
@@ -199,11 +199,11 @@ export async function mergeIssue(input: { issueId: string; targetNumber: number 
   });
 }
 
-/* ───────────────────────── Moderation (admin) ───────────────────────── */
+/* ───────────────────────── Moderation (moderators and admins) ───────────────────────── */
 
 export async function moderate(input: { targetType: "issue" | "comment"; targetId: string; hide: boolean; reason?: string }) {
   return run(async () => {
-    const admin = await requireAdmin();
+    const admin = await requireMod();
     await limit("admin", admin.id);
     const targetType = z.enum(["issue", "comment"]).parse(input.targetType);
     const targetId = uuid.parse(input.targetId);
@@ -214,7 +214,7 @@ export async function moderate(input: { targetType: "issue" | "comment"; targetI
       if (targetType === "issue") {
         const [i] = await tx
           .update(issues)
-          .set({ hidden: input.hide, hiddenReason: input.hide ? reason : null })
+          .set({ hidden: input.hide, hiddenReason: input.hide ? reason : null, updatedAt: new Date(), ...(input.hide ? {} : { approval: "approved" as const }) })
           .where(eq(issues.id, targetId))
           .returning({ number: issues.number });
         if (!i) throw new UserError("Not found");
@@ -222,12 +222,16 @@ export async function moderate(input: { targetType: "issue" | "comment"; targetI
         await tx.insert(issueEvents).values({
           issueId: targetId,
           actorId: admin.id,
-          actorRole: "admin",
+          actorRole: admin.role,
           type: input.hide ? "hidden" : "restored",
           note: reason,
         });
       } else {
-        const [c] = await tx.update(comments).set({ hidden: input.hide }).where(eq(comments.id, targetId)).returning();
+        const [c] = await tx
+          .update(comments)
+          .set({ hidden: input.hide, ...(input.hide ? {} : { approval: "approved" as const }) })
+          .where(eq(comments.id, targetId))
+          .returning();
         if (!c) throw new UserError("Not found");
       }
       await tx
@@ -250,7 +254,7 @@ export async function moderate(input: { targetType: "issue" | "comment"; targetI
 
 export async function dismissFlags(input: { targetType: "issue" | "comment"; targetId: string }) {
   return run(async () => {
-    const admin = await requireAdmin();
+    const admin = await requireMod();
     const targetType = z.enum(["issue", "comment"]).parse(input.targetType);
     const targetId = uuid.parse(input.targetId);
     await db.update(flags).set({ resolved: true }).where(and(eq(flags.targetType, targetType), eq(flags.targetId, targetId)));
@@ -262,12 +266,12 @@ export async function dismissFlags(input: { targetType: "issue" | "comment"; tar
 
 /* ───────────────────────── People (admin) ───────────────────────── */
 
-export async function setUserRole(input: { userId: string; role: "member" | "staff" | "admin"; departmentId?: string | null }) {
+export async function setUserRole(input: { userId: string; role: "member" | "staff" | "mod" | "admin"; departmentId?: string | null }) {
   return run(async () => {
     const admin = await requireAdmin();
     await limit("admin", admin.id);
     const userId = z.string().min(1).max(64).parse(input.userId);
-    const role = z.enum(["member", "staff", "admin"]).parse(input.role);
+    const role = z.enum(["member", "staff", "mod", "admin"]).parse(input.role);
     if (userId === admin.id && role !== "admin") throw new UserError("You can't remove your own admin role.");
     let departmentId: string | null = null;
     if (role === "staff") {

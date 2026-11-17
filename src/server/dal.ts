@@ -59,6 +59,18 @@ export async function requireAdmin(): Promise<Viewer> {
   return v;
 }
 
+/** Moderators approve, reject and hide content. Admins are moderators too. */
+export const isMod = (v: Viewer | null) => v?.role === "admin" || v?.role === "mod";
+
+export async function requireMod(): Promise<Viewer> {
+  const v = await requireViewer();
+  if (!isMod(v)) throw new AuthError("Moderators only.", 403);
+  return v;
+}
+
+/** Whose posts go live without review: offices, moderators and admins. */
+export const isTrusted = (v: Viewer | null) => !!v && v.role !== "member";
+
 export const isStaffish = (v: Viewer | null) => v?.role === "admin" || v?.role === "staff";
 
 /** Staff can act on issues routed to their department; admins on everything. */

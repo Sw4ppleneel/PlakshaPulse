@@ -1,91 +1,118 @@
 @import "tailwindcss";
 
 /*
- * Palette: Plaksha teal (#007878) as the brand, FretBox navy (#102E4D) as ink, Plaksha's
- * accent yellow (#FFC35A) for highlights. Light/dark are token swaps; components never hardcode.
+ * Soft, rounded, card-based. A warm grey canvas, white cards, dark feature cards and one mint
+ * accent. Light is primary; dark follows the device unless the person picked a theme.
+ *
+ * Token roles:
+ *   bg / surface / surface-2 / surface-3   canvas, cards, inner tiles and input fill, tracks
+ *   ink / ink-2 / ink-muted                text, body text, captions
+ *   mint + brand-ink                       the accent FILL (primary buttons, progress, selected dots) and text on it
+ *   brand / brand-soft                     accent-coloured TEXT and borders on light surfaces, and its tint
+ *   accent / accent-soft / accent-ink      the yellow used for "needs attention"
+ *   dark-card / on-dark / on-dark-2        dark feature cards
  */
 :root {
-  --bg: #f5f8f8;
+  --bg: #e7e9e4;
   --surface: #ffffff;
-  --surface-2: #eef4f4;
-  --surface-3: #e3eded;
-  --ink: #102e4d;
-  --ink-2: #29445f;
-  --ink-muted: #5d7083;
-  --line: #e0e9ec;
-  --line-strong: #c9d7db;
-  --brand: #007878;
-  --brand-strong: #00555a;
-  --brand-soft: #e3f3f2;
-  --brand-ink: #ffffff;
-  --aqua: #00a0b4;
-  --accent: #ffc35a;
-  --accent-soft: #fff3da;
-  --accent-ink: #8a5a00;
-  --ok: #1d9a6c;
-  --ok-soft: #e3f5ed;
-  --warn: #c98a0b;
-  --warn-soft: #fdf2d9;
-  --danger: #d2323c;
-  --danger-soft: #fce8e9;
-  --shadow: 16 46 77;
+  --surface-2: #f2f4ef;
+  --surface-3: #e4e7e0;
+  --ink: #0d1210;
+  --ink-2: #2c332f;
+  --ink-muted: #5a625c;
+  --line: rgb(13 18 16 / 0.08);
+  --line-strong: rgb(13 18 16 / 0.14);
+  --mint: #7af09a;
+  --brand: #15803d;
+  --brand-strong: #116b33;
+  --brand-soft: #defbe6;
+  --brand-ink: #062a12;
+  --aqua: #0c6b5e;
+  --accent: #f5b83d;
+  --accent-soft: #fdf1d3;
+  --accent-ink: #7a5600;
+  --ok: #15803d;
+  --ok-soft: #defbe6;
+  --warn: #8f6200;
+  --warn-soft: #fdf1d3;
+  --danger: #c4281c;
+  --danger-soft: #fde7e5;
+  --dark-card: #0e1411;
+  --on-dark: #f1f5f0;
+  --on-dark-2: #9ba59d;
+  --shadow: 13 18 16;
+  --shadow-a: 0.18;
+  --frost: rgb(255 255 255 / 0.82);
+
+  /* Floating bottom nav on phones; the sidebar takes over at lg. */
+  --nav-h: 68px;
+  --nav-gap: max(12px, env(safe-area-inset-bottom));
+  --nav-space: calc(var(--nav-h) + var(--nav-gap) + 28px);
+  --sidebar-w: 17rem;
   color-scheme: light;
+}
+@media (min-width: 1024px) {
+  :root {
+    --nav-space: 3.5rem;
+  }
 }
 
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-    --bg: #0a1520;
-    --surface: #0f1f2d;
-    --surface-2: #142838;
-    --surface-3: #1a3245;
-    --ink: #e6f0f3;
-    --ink-2: #c6d6dd;
-    --ink-muted: #8ca2b2;
-    --line: #1d3445;
-    --line-strong: #2a475b;
-    --brand: #2bb3ad;
-    --brand-strong: #5fd0ca;
-    --brand-soft: #0f3338;
-    --brand-ink: #04191c;
-    --aqua: #35c3d5;
-    --accent: #ffc35a;
-    --accent-soft: #3a2f17;
-  --accent-ink: #ffc35a;
-    --ok: #3cc58f;
-    --ok-soft: #10342a;
-    --warn: #f0b443;
-    --warn-soft: #3a2d12;
-    --danger: #f06470;
-    --danger-soft: #3d1a1f;
+    --bg: #090c0a;
+    --surface: #131816;
+    --surface-2: #1a201c;
+    --surface-3: #262d28;
+    --ink: #eef2ee;
+    --ink-2: #cdd4ce;
+    --ink-muted: #a3aca5;
+    --line: rgb(255 255 255 / 0.08);
+    --line-strong: rgb(255 255 255 / 0.15);
+    --brand: #7af09a;
+    --brand-strong: #9bf5b3;
+    --brand-soft: #1a2d23;
+    --aqua: #5ad1be;
+    --accent-soft: #33290f;
+    --accent-ink: #f5b83d;
+    --ok: #7af09a;
+    --ok-soft: #1a2d23;
+    --warn: #f5b83d;
+    --warn-soft: #33290f;
+    --danger: #f87168;
+    --danger-soft: #3a1b19;
+    --dark-card: #1b221e;
     --shadow: 0 0 0;
+    --shadow-a: 0.6;
+    --frost: rgb(19 24 22 / 0.82);
     color-scheme: dark;
   }
 }
 :root[data-theme="dark"] {
-  --bg: #0a1520;
-  --surface: #0f1f2d;
-  --surface-2: #142838;
-  --surface-3: #1a3245;
-  --ink: #e6f0f3;
-  --ink-2: #c6d6dd;
-  --ink-muted: #8ca2b2;
-  --line: #1d3445;
-  --line-strong: #2a475b;
-  --brand: #2bb3ad;
-  --brand-strong: #5fd0ca;
-  --brand-soft: #0f3338;
-  --brand-ink: #04191c;
-  --aqua: #35c3d5;
-  --accent: #ffc35a;
-  --accent-soft: #3a2f17;
-  --accent-ink: #ffc35a;
-  --ok: #3cc58f;
-  --ok-soft: #10342a;
-  --warn: #f0b443;
-  --warn-soft: #3a2d12;
-  --danger: #f06470;
-  --danger-soft: #3d1a1f;
+  --bg: #090c0a;
+  --surface: #131816;
+  --surface-2: #1a201c;
+  --surface-3: #262d28;
+  --ink: #eef2ee;
+  --ink-2: #cdd4ce;
+  --ink-muted: #a3aca5;
+  --line: rgb(255 255 255 / 0.08);
+  --line-strong: rgb(255 255 255 / 0.15);
+  --brand: #7af09a;
+  --brand-strong: #9bf5b3;
+  --brand-soft: #1a2d23;
+  --aqua: #5ad1be;
+  --accent-soft: #33290f;
+  --accent-ink: #f5b83d;
+  --ok: #7af09a;
+  --ok-soft: #1a2d23;
+  --warn: #f5b83d;
+  --warn-soft: #33290f;
+  --danger: #f87168;
+  --danger-soft: #3a1b19;
+  --dark-card: #1b221e;
   --shadow: 0 0 0;
+  --shadow-a: 0.6;
+  --frost: rgb(19 24 22 / 0.82);
   color-scheme: dark;
 }
 
@@ -99,6 +126,7 @@
   --color-ink-muted: var(--ink-muted);
   --color-line: var(--line);
   --color-line-strong: var(--line-strong);
+  --color-mint: var(--mint);
   --color-brand: var(--brand);
   --color-brand-strong: var(--brand-strong);
   --color-brand-soft: var(--brand-soft);
@@ -113,27 +141,28 @@
   --color-warn-soft: var(--warn-soft);
   --color-danger: var(--danger);
   --color-danger-soft: var(--danger-soft);
-  --font-sans: var(--font-dm-sans), ui-sans-serif, system-ui, sans-serif;
-  --font-display: var(--font-fraunces), ui-serif, Georgia, serif;
-  --shadow-card: 0 1px 2px rgb(var(--shadow) / 0.05), 0 4px 16px -6px rgb(var(--shadow) / 0.08);
-  --shadow-pop: 0 2px 6px rgb(var(--shadow) / 0.06), 0 18px 40px -12px rgb(var(--shadow) / 0.22);
-  --animate-rise: rise 0.45s cubic-bezier(0.2, 0.8, 0.2, 1) both;
-  --animate-pop: pop 0.5s cubic-bezier(0.2, 1.4, 0.4, 1) both;
+  --color-dark: var(--dark-card);
+  --color-ondark: var(--on-dark);
+  --color-ondark-2: var(--on-dark-2);
+  --font-sans: var(--font-outfit), ui-sans-serif, system-ui, sans-serif;
+  --font-display: var(--font-outfit), ui-sans-serif, system-ui, sans-serif;
+  /* One rounder scale everywhere: inputs 16px, cards inside cards 20px, big cards 28px. */
+  --radius-lg: 0.75rem;
+  --radius-xl: 1rem;
+  --radius-2xl: 1.25rem;
+  --radius-3xl: 1.75rem;
+  --shadow-card: 0 1px 2px rgb(var(--shadow) / 0.04), 0 10px 28px -14px rgb(var(--shadow) / var(--shadow-a));
+  --shadow-pop: 0 18px 44px -16px rgb(var(--shadow) / calc(var(--shadow-a) + 0.16));
+  --shadow-nav: 0 14px 36px -12px rgb(var(--shadow) / calc(var(--shadow-a) + 0.12)), 0 0 0 1px var(--line);
+  --shadow-glow: 0 8px 24px -8px color-mix(in srgb, var(--mint) 70%, transparent);
+  --animate-rise: rise 0.4s cubic-bezier(0.22, 1, 0.36, 1) both;
+  --animate-pop: pop 0.45s cubic-bezier(0.2, 1.4, 0.4, 1) both;
 }
 
 @keyframes rise {
   from {
     opacity: 0;
-    transform: translateY(8px);
-  }
-}
-@keyframes float {
-  0%,
-  100% {
-    transform: translateY(0);
-  }
-  50% {
-    transform: translateY(-1.2px);
+    transform: translateY(10px);
   }
 }
 @keyframes pop {
@@ -141,35 +170,84 @@
     transform: scale(1);
   }
   40% {
-    transform: scale(1.18);
+    transform: scale(1.16);
   }
   100% {
     transform: scale(1);
   }
 }
+@keyframes grow-x {
+  from {
+    transform: scaleX(0);
+  }
+}
 
-html,
-body {
-  background: var(--bg);
-  color: var(--ink);
+@layer base {
+  html {
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+  }
+  html,
+  body {
+    background: var(--bg);
+    color: var(--ink);
+  }
+  body {
+    font-family: var(--font-sans);
+    font-size: 15px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    -webkit-tap-highlight-color: transparent;
+    overflow-x: hidden;
+  }
+  button,
+  a,
+  [role="button"] {
+    touch-action: manipulation;
+  }
+  button:not(:disabled),
+  [role="button"],
+  select,
+  summary,
+  label:has(input[type="checkbox"], input[type="radio"]) {
+    cursor: pointer;
+  }
+  ::selection {
+    background: color-mix(in srgb, var(--mint) 45%, transparent);
+  }
+  :focus {
+    outline: none;
+  }
+  :focus-visible {
+    outline: 2px solid var(--brand);
+    outline-offset: 2px;
+  }
+  h1,
+  h2,
+  h3 {
+    text-wrap: balance;
+  }
 }
-body {
-  font-family: var(--font-sans);
-  -webkit-font-smoothing: antialiased;
-  text-rendering: optimizeLegibility;
-}
-::selection {
-  background: color-mix(in srgb, var(--brand) 25%, transparent);
-}
-:focus-visible {
-  outline: 2px solid var(--aqua);
-  outline-offset: 2px;
-  border-radius: 6px;
-}
+
+/* Headings: same family as the body, set heavier and tighter. */
 .font-display {
   font-family: var(--font-display);
-  font-optical-sizing: auto;
-  letter-spacing: -0.01em;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+/* Page title. */
+.title {
+  font-size: 2rem;
+  line-height: 2.25rem;
+  letter-spacing: -0.02em;
+  font-weight: 600;
+}
+/* Small caption above a value: sentence case, never uppercase-tracked. */
+.label {
+  font-size: 0.8125rem;
+  line-height: 1.125rem;
+  color: var(--ink-muted);
 }
 .tabular {
   font-variant-numeric: tabular-nums;
@@ -180,21 +258,138 @@ body {
 .scrollbar-none::-webkit-scrollbar {
   display: none;
 }
+
+/* The basic surface: no border, a soft resting shadow. */
 .card {
   background: var(--surface);
-  border: 1px solid var(--line);
-  border-radius: 1rem;
+  border-radius: 1.75rem;
   box-shadow: var(--shadow-card);
 }
-.dot-grid {
-  background-image: radial-gradient(color-mix(in srgb, var(--ink) 9%, transparent) 1px, transparent 1px);
-  background-size: 18px 18px;
+
+/*
+ * Dark feature card. It re-points the tokens for everything inside it, so text, tiles, tracks,
+ * pills and focus rings adapt without each component knowing where it sits.
+ */
+.on-dark {
+  --ink: var(--on-dark);
+  --ink-2: #dbe2dc;
+  --ink-muted: var(--on-dark-2);
+  --surface-2: rgb(255 255 255 / 0.08);
+  --surface-3: rgb(255 255 255 / 0.14);
+  --line: rgb(255 255 255 / 0.1);
+  --line-strong: rgb(255 255 255 / 0.18);
+  --brand: var(--mint);
+  --brand-soft: rgb(122 240 154 / 0.16);
+  --ok: var(--mint);
+  --ok-soft: rgb(122 240 154 / 0.16);
+  --accent-soft: rgb(245 184 61 / 0.18);
+  --accent-ink: var(--accent);
+  --warn: var(--accent);
+  --warn-soft: rgb(245 184 61 / 0.18);
+  --aqua: #7fe3d2;
+  background: var(--dark-card);
+  color: var(--on-dark);
+  box-shadow: var(--shadow-pop);
 }
+
+/* Form control. 16px text so iOS never zooms on focus. */
+.field {
+  width: 100%;
+  min-height: 48px;
+  border-radius: 1rem;
+  border: 1.5px solid transparent;
+  background: var(--surface-2);
+  padding: 0.625rem 1rem;
+  font-size: 16px;
+  line-height: 1.375rem;
+  color: var(--ink);
+  transition:
+    border-color 160ms ease,
+    background-color 160ms ease;
+}
+.field::placeholder {
+  color: var(--ink-muted);
+  opacity: 0.8;
+}
+.field:focus,
+.field:focus-visible {
+  outline: none;
+  border-color: var(--brand);
+  background: var(--surface);
+}
+select.field {
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%238e968f' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.9rem center;
+  padding-right: 2.5rem;
+}
+
+/* Frosted surface for the floating nav. */
+.frost {
+  background: var(--frost);
+  -webkit-backdrop-filter: saturate(1.4) blur(18px);
+  backdrop-filter: saturate(1.4) blur(18px);
+}
+.press {
+  transition: transform 140ms ease;
+}
+.press:active {
+  transform: scale(0.97);
+}
+/* Progress fills draw themselves in from the left. */
+.grow-x {
+  transform-origin: left;
+  animation: grow-x 0.7s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+.pb-nav {
+  padding-bottom: var(--nav-space);
+}
+.pt-safe {
+  padding-top: max(0.75rem, env(safe-area-inset-top));
+}
+
+/* Ticket perforation: a band with a real semicircular cut-out on each side and a dashed line. */
+.ticket-notch {
+  --notch: 12px;
+  position: relative;
+  height: calc(var(--notch) * 2);
+  -webkit-mask-image:
+    radial-gradient(circle var(--notch) at 0 50%, transparent 97%, #000 100%), radial-gradient(circle var(--notch) at 100% 50%, transparent 97%, #000 100%);
+  mask-image:
+    radial-gradient(circle var(--notch) at 0 50%, transparent 97%, #000 100%), radial-gradient(circle var(--notch) at 100% 50%, transparent 97%, #000 100%);
+  -webkit-mask-composite: source-in;
+  mask-composite: intersect;
+}
+.ticket-notch::after {
+  content: "";
+  position: absolute;
+  left: calc(var(--notch) + 10px);
+  right: calc(var(--notch) + 10px);
+  top: 50%;
+  border-top: 2px dashed currentColor;
+  opacity: 0.16;
+}
+
+@media print {
+  html,
+  body {
+    background: #fff;
+  }
+  .card {
+    box-shadow: none;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
   *::after {
     animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
+  }
+  .press:active {
+    transform: none;
   }
 }

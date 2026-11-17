@@ -129,7 +129,7 @@ export function ReportForm({ categories, locations, departments }: { categories:
                 aria-pressed={categoryId === c.id}
                 className={cn(
                   "flex items-center gap-2.5 rounded-xl border p-2.5 text-left text-sm font-medium transition-all",
-                  categoryId === c.id ? "border-transparent ring-2" : "border-line hover:border-line-strong hover:bg-surface-2",
+                  categoryId === c.id ? "border-transparent ring-2" : "border-transparent bg-surface-2 hover:bg-surface-3",
                 )}
                 style={categoryId === c.id ? ({ "--tw-ring-color": c.color, background: `color-mix(in srgb, ${c.color} 9%, var(--surface))` } as React.CSSProperties) : undefined}
               >
@@ -157,7 +157,7 @@ export function ReportForm({ categories, locations, departments }: { categories:
               <select
                 value={locationId}
                 onChange={(e) => setLocationId(e.target.value)}
-                className="h-11 w-full appearance-none rounded-xl border border-line-strong bg-surface pl-10 pr-3 text-sm outline-none focus:border-brand"
+                className="h-11 w-full appearance-none rounded-xl bg-surface-2 pl-10 pr-3 text-sm outline-none transition-colors placeholder:text-ink-muted focus:bg-surface focus:ring-2 focus:ring-brand"
                 aria-label="Location"
               >
                 <option value="">Pick a place…</option>
@@ -178,7 +178,7 @@ export function ReportForm({ categories, locations, departments }: { categories:
               value={locationDetail}
               onChange={(e) => setLocationDetail(e.target.value.slice(0, 80))}
               placeholder="Room / floor (optional)"
-              className="h-11 rounded-xl border border-line-strong bg-surface px-3.5 text-sm outline-none placeholder:text-ink-muted focus:border-brand"
+              className="h-11 rounded-xl bg-surface-2 px-3.5 text-sm outline-none transition-colors placeholder:text-ink-muted focus:bg-surface focus:ring-2 focus:ring-brand"
             />
           </div>
         </section>
@@ -194,7 +194,7 @@ export function ReportForm({ categories, locations, departments }: { categories:
                 value={title}
                 onChange={(e) => setTitle(e.target.value.slice(0, 120))}
                 placeholder="e.g. Wi-Fi drops every night on floor 8"
-                className="h-12 w-full rounded-xl border border-line-strong bg-surface px-4 pr-10 text-[15px] font-medium outline-none placeholder:font-normal placeholder:text-ink-muted focus:border-brand focus:ring-4 focus:ring-brand/10"
+                className="h-12 w-full rounded-xl bg-surface-2 px-4 pr-10 text-[16px] font-medium outline-none transition-colors placeholder:font-normal placeholder:text-ink-muted focus:bg-surface focus:ring-2 focus:ring-brand"
                 aria-label="Title"
               />
               {searching && <Loader2 size={16} className="absolute right-3.5 top-1/2 -translate-y-1/2 animate-spin text-ink-muted" />}
@@ -241,7 +241,7 @@ export function ReportForm({ categories, locations, departments }: { categories:
               onChange={(e) => setBody(e.target.value.slice(0, 4000))}
               rows={5}
               placeholder="What's happening, since when, and how it affects you. Stick to the issue — don't name individuals."
-              className="w-full resize-y rounded-xl border border-line-strong bg-surface px-4 py-3 text-[15px] leading-relaxed outline-none placeholder:text-ink-muted focus:border-brand focus:ring-4 focus:ring-brand/10"
+              className="w-full resize-y rounded-xl bg-surface-2 px-4 py-3 text-[15px] outline-none transition-colors placeholder:text-ink-muted focus:bg-surface focus:ring-2 focus:ring-brand"
               aria-label="Description"
             />
 
@@ -258,9 +258,9 @@ export function ReportForm({ categories, locations, departments }: { categories:
                       "rounded-xl border px-3 py-2.5 text-sm font-medium transition-colors",
                       severity === k
                         ? k === "high"
-                          ? "border-danger bg-danger-soft text-danger"
-                          : "border-brand bg-brand-soft text-brand"
-                        : "border-line hover:border-line-strong",
+                          ? "border-transparent bg-danger text-white"
+                          : "border-transparent bg-ink text-bg"
+                        : "border-transparent bg-surface-2 hover:bg-surface-3",
                     )}
                   >
                     {SEVERITY_META[k].label}
@@ -290,7 +290,7 @@ export function ReportForm({ categories, locations, departments }: { categories:
                 {photos.length < MAX_PHOTOS && (
                   <button
                     onClick={() => fileRef.current?.click()}
-                    className="flex size-20 flex-col items-center justify-center gap-1 rounded-xl border border-dashed border-line-strong text-xs text-ink-muted hover:border-brand hover:text-brand"
+                    className="flex size-20 flex-col items-center justify-center gap-1 rounded-2xl bg-surface-2 text-xs text-ink-muted transition-colors hover:bg-surface-3 hover:text-ink"
                   >
                     <Camera size={18} /> Add
                   </button>
@@ -306,7 +306,7 @@ export function ReportForm({ categories, locations, departments }: { categories:
       {/* Summary / submit */}
       <aside className="lg:sticky lg:top-24 lg:h-fit">
         <div className="card p-5">
-          <div className="text-[11px] font-semibold uppercase tracking-[0.08em] text-ink-muted">Your report</div>
+          <div className="text-[13px] text-ink-muted">Your report</div>
           <div className="mt-3 space-y-2 text-sm">
             <Row label="Category" value={cat?.name} />
             <Row label="Where" value={[locations.find((l) => l.id === locationId)?.name, locationDetail].filter(Boolean).join(" · ") || undefined} />
@@ -319,7 +319,7 @@ export function ReportForm({ categories, locations, departments }: { categories:
             <span
               className={cn(
                 "mt-0.5 inline-flex h-5 w-9 shrink-0 items-center rounded-full p-0.5 transition-colors",
-                anonymous ? "bg-brand" : "bg-line-strong",
+                anonymous ? "bg-mint" : "bg-line-strong",
               )}
             >
               <span className={cn("size-4 rounded-full bg-white shadow transition-transform", anonymous && "translate-x-4")} />
@@ -351,7 +351,7 @@ function StepLabel({ n, done, children }: { n: number; done: boolean; children: 
       <span
         className={cn(
           "inline-flex size-6 items-center justify-center rounded-full text-xs font-bold transition-colors",
-          done ? "bg-brand text-brand-ink" : "bg-surface-2 text-ink-muted ring-1 ring-line-strong",
+          done ? "bg-mint text-brand-ink" : "bg-surface-2 text-ink-muted ring-1 ring-line-strong",
         )}
       >
         {done ? <Check size={13} strokeWidth={3} /> : n}

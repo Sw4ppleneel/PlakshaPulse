@@ -23,11 +23,14 @@ import {
   CLOSE_QUORUM,
   FLAG_REASONS,
   MAX_ISSUES_PER_DAY,
+  MAX_PENDING_COMMENTS,
+  MAX_PENDING_POSTS,
   MAX_PHOTOS,
+  PENDING_NOTE,
   REOPEN_QUORUM,
   type Status,
 } from "@/lib/constants";
-import { canManage, requireViewer } from "../dal";
+import { canManage, isTrusted, requireViewer } from "../dal";
 import { processImage } from "../images";
 import { notifyWatchers, watch } from "../notify";
 import { limit } from "../rate-limit";
@@ -79,6 +82,19 @@ export async function createIssue(form: FormData) {
       .where(and(eq(issues.reporterId, viewer.id), gt(issues.createdAt, sql`now() - interval '24 hours'`)));
     if (today >= MAX_ISSUES_PER_DAY) throw new UserError("You've reported a lot today. Try again tomorrow, or add a me-too to existing issues.");
 
+    // Members' reports wait for a moderator. Offices, moderators and admins post directly.
+    const trusted = isTrusted(viewer);
+    if (!trusted) {
+      const [{ n: waiting }] = await db.select({ n: count() }).from(issues).where(and(eq(issues.reporterId, viewer.id), eq(issues.approval, "pending")));
+      if (waiting >= MAX_PENDING_POSTS) throw new UserError(`You have ${waiting} reports waiting for approval. Once a moderator has looked at them you can post more.`);
+    }
+    const [same] = await db
+      .select({ number: issues.number })
+      .from(issues)
+      .where(and(eq(issues.reporterId, viewer.id), sql`lower(${issues.title}) = lower(${input.title})`, gt(issues.createdAt, sql`now() - interval '7 days'`)))
+      .limit(1);
+    if (same) throw new UserError(`You already reported this (#${same.number}).`);
+
     const [cat] = await db.select().from(categories).where(eq(categories.id, input.categoryId)).limit(1);
     if (!cat) throw new UserError("Unknown category");
     if (input.locationId) {
@@ -104,6 +120,9 @@ export async function createIssue(form: FormData) {
           departmentId: cat.departmentId,
           dueAt: sql`now() + make_interval(hours => ${cat.slaHours})`,
           metooCount: 1,
+          approval: trusted ? "approved" : "pending",
+          hidden: !trusted,
+          hiddenReason: trusted ? null : PENDING_NOTE,
         })
         .returning({ id: issues.id, number: issues.number });
       await tx.insert(issueVotes).values({ issueId: issue.id, userId: viewer.id });
@@ -123,7 +142,8 @@ export async function createIssue(form: FormData) {
     });
 
     revalidatePath("/board");
-    return { number: created.number };
+    revalidatePath("/admin");
+    return { number: created.number, pending: !trusted };
   });
 }
 
@@ -217,6 +237,19 @@ export async function addComment(input: z.input<typeof commentSchema>) {
     const official = data.official && canManage(viewer, issue.departmentId);
     if (data.official && !official) throw new UserError("Only the assigned department can post official updates.");
 
+    // Comments from members wait for a moderator too; nobody is notified until one is approved.
+    const live = official || isTrusted(viewer);
+    if (!live) {
+      const [{ n: waiting }] = await db.select({ n: count() }).from(comments).where(and(eq(comments.authorId, viewer.id), eq(comments.approval, "pending")));
+      if (waiting >= MAX_PENDING_COMMENTS) throw new UserError("You have several comments waiting for approval. Give the moderators a moment.");
+    }
+    const [dupe] = await db
+      .select({ id: comments.id })
+      .from(comments)
+      .where(and(eq(comments.issueId, issue.id), eq(comments.authorId, viewer.id), eq(comments.body, data.body), gt(comments.createdAt, sql`now() - interval '1 hour'`)))
+      .limit(1);
+    if (dupe) throw new UserError("You already posted that here.");
+
     await db.transaction(async (tx) => {
       await tx.insert(comments).values({
         issueId: issue.id,
@@ -224,12 +257,15 @@ export async function addComment(input: z.input<typeof commentSchema>) {
         body: data.body,
         anonymous: official ? false : data.anonymous,
         official,
+        hidden: !live,
+        approval: live ? "approved" : "pending",
       });
+      await watch(tx, issue.id, viewer.id);
+      if (!live) return;
       await tx
         .update(issues)
         .set({ commentCount: sql`${issues.commentCount} + 1`, updatedAt: sql`now()` })
         .where(eq(issues.id, issue.id));
-      await watch(tx, issue.id, viewer.id);
       await notifyWatchers(
         tx,
         issue.id,
@@ -239,7 +275,8 @@ export async function addComment(input: z.input<typeof commentSchema>) {
       );
     });
     revalidatePath(`/issues/${issue.number}`);
-    return {};
+    revalidatePath("/admin");
+    return { pending: !live };
   });
 }
 

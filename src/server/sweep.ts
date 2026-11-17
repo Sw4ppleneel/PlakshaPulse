@@ -14,6 +14,8 @@ export async function sweep(force = false) {
   const now = Date.now();
   if (!force && now - lastRun < 5 * 60_000) return 0;
   lastRun = now;
+  // Rate-limit counters whose window ended over a day ago are dead weight.
+  await db.execute(sql`delete from rate_hits where reset_at < now() - interval '1 day'`);
   const r = await db.execute<{ id: string; number: number }>(sql`
     with closed as (
       update issues set status = 'closed', closed_at = now(), updated_at = now()

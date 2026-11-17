@@ -74,7 +74,7 @@ export function SignInForm({ next, microsoft, domain, error }: { next: string; m
           <label className="block text-sm font-medium" htmlFor="email">
             Plaksha email
           </label>
-          <div className="flex h-12 items-center rounded-xl border border-line-strong bg-surface focus-within:border-brand focus-within:ring-4 focus-within:ring-brand/10">
+          <div className="flex h-12 items-center rounded-xl bg-surface-2 transition-colors focus-within:bg-surface focus-within:ring-2 focus-within:ring-brand">
             <Mail size={17} className="ml-3.5 shrink-0 text-ink-muted" />
             <input
               id="email"
@@ -83,11 +83,15 @@ export function SignInForm({ next, microsoft, domain, error }: { next: string; m
               inputMode="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              placeholder="firstname.lastname"
-              className="h-full min-w-0 flex-1 bg-transparent px-2.5 text-[15px] outline-none placeholder:text-ink-muted"
+              placeholder="firstname.x.ug25"
+              aria-describedby="email-hint"
+              className="h-full min-w-0 flex-1 bg-transparent px-2.5 text-[16px] outline-none placeholder:text-ink-muted"
             />
             {!email.includes("@") && <span className="pr-3.5 text-sm text-ink-muted">@{domain}</span>}
           </div>
+          <p id="email-hint" className="text-[13px] text-ink-muted">
+            Your full Plaksha address, including the batch part (like <span className="font-medium text-ink-2">.ug25</span>) if you have one.
+          </p>
           <Button type="submit" size="lg" className="w-full" disabled={busy || !email.trim()}>
             {busy ? <Loader2 size={18} className="animate-spin" /> : null} Email me a sign-in code
           </Button>
@@ -100,6 +104,7 @@ export function SignInForm({ next, microsoft, domain, error }: { next: string; m
           <p className="text-sm text-ink-2">
             We sent a 6-digit code to <b className="break-all">{fullEmail}</b>. Check your Outlook inbox.
           </p>
+          <p className="text-[13px] text-ink-muted">Nothing after a minute? Check junk, and that the address is exactly right — a missing batch part means it went nowhere.</p>
           <input
             ref={codeRef}
             value={code}
@@ -112,7 +117,7 @@ export function SignInForm({ next, microsoft, domain, error }: { next: string; m
             autoComplete="one-time-code"
             aria-label="6-digit code"
             placeholder="••••••"
-            className="font-display h-14 w-full rounded-xl border border-line-strong bg-surface text-center text-[28px] tracking-[0.5em] outline-none focus:border-brand focus:ring-4 focus:ring-brand/10 tabular"
+            className="font-display h-14 w-full rounded-xl bg-surface-2 text-center text-[28px] tracking-[0.5em] outline-none focus:bg-surface focus:ring-2 focus:ring-brand tabular"
           />
           <Button size="lg" className="w-full" disabled={busy || code.length !== 6} onClick={() => verify()}>
             {busy ? <Loader2 size={18} className="animate-spin" /> : null} Sign in
